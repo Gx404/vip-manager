@@ -1,0 +1,313 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
+import {
+  Bell, BriefcaseBusiness, CalendarDays, Check, ChevronRight, Cloud, Clock3,
+  CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus, RotateCw,
+  Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Wallet,
+} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Toaster } from "@/components/ui/sonner";
+import { LoginDialog } from "@/components/login-dialog";
+import { apiRequest, ApiError } from "@/lib/api";
+import { toast } from "sonner";
+import { categories, cycles, dateKey, fraction, monthlyCost, remaining, renewDate, sampleSubscriptions, shiftDate, stateOf, type Subscription } from "@/lib/subscriptions";
+
+const categoryIcons = [Music2, Sparkles, Cloud, BriefcaseBusiness, LayoutGrid];
+const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
+const currency = (n: number) => n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+type Status = keyof typeof statusNames;
+type Draft = Omit<Subscription, "amount" | "customDays" | "reminderDays"> & { amount: string; customDays: string; reminderDays: string };
+type ConfirmAction = { kind: "delete" | "renew"; item: Subscription } | null;
+
+function blankDraft(today: string): Draft {
+  return {
+    id: "", name: "", plan: "", category: "其他服务", amount: "0", cycle: "monthly", customDays: "30",
+    startDate: today, endDate: renewDate(today, "monthly", 30), reminderDays: "7", autoRenew: false, note: "", color: "#269979", version: 0,
+  };
+}
+
+function toDraft(item: Subscription): Draft {
+  return { ...item, amount: String(item.amount), customDays: String(item.customDays), reminderDays: String(item.reminderDays) };
+}
+
+function Segments({ value, color, label }: { value: number; color: string; label: string }) {
+  return <Progress value={value} aria-label={label} className="segments" style={{ "--segment-color": color } as CSSProperties} />;
+}
+
+function Logo({ item }: { item: Subscription }) {
+  const Icon = item.name === "iCloud+" ? Cloud : item.name === "ChatGPT" ? Sparkles : item.name === "网易云音乐" ? Music2 : null;
+  return <div className="service-logo" style={{ background: `${item.color}10`, color: item.color }}>{Icon ? <Icon size={20} /> : item.name.slice(0, 1)}</div>;
+}
+
+function escapeIcs(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll(";", "\\;").replaceAll(",", "\\,").replaceAll("\n", "\\n");
+}
+
+function downloadCalendar(item: Subscription) {
+  const start = item.endDate.replaceAll("-", "");
+  const nextDay = shiftDate(item.endDate, 1).replaceAll("-", "");
+  const trigger = item.reminderDays > 0 ? `-P${item.reminderDays}D` : "-PT0M";
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Gx404//Memberships//CN", "CALSCALE:GREGORIAN", "BEGIN:VEVENT",
+    `UID:${item.id}@gx404-memberships`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
+    `DTSTART;VALUE=DATE:${start}`, `DTEND;VALUE=DATE:${nextDay}`, `SUMMARY:${escapeIcs(`${item.name} 到期`)}`,
+    `DESCRIPTION:${escapeIcs(`${item.plan || "会员订阅"} · ¥${currency(item.amount)} · 续费方式：${item.autoRenew ? "自动续费" : "手动续费"}`)}`,
+    "BEGIN:VALARM", `TRIGGER:${trigger}`, "ACTION:DISPLAY", `DESCRIPTION:${escapeIcs(`${item.name} 即将到期`)}`, "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${item.name}-到期提醒.ics`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast.success("日历文件已生成", { description: "导入日历后由系统负责提醒；续费后请重新导出一次。" });
+}
+
+export default function Dashboard() {
+  const [today, setToday] = useState(() => dateKey());
+  const [items, setItems] = useState<Subscription[]>(() => sampleSubscriptions(dateKey()));
+  const [demo, setDemo] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [authRequired, setAuthRequired] = useState(true);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [category, setCategory] = useState("全部");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("expiry");
+  const [showReminders, setShowReminders] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [selected, setSelected] = useState<Subscription | null>(null);
+  const [draft, setDraft] = useState<Draft>(() => blankDraft(dateKey()));
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setToday(dateKey()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const loadRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      const payload = await apiRequest<{ items: Subscription[]; initialized: boolean }>("/subscriptions");
+      setAuthRequired(false);
+      setSyncError(null);
+      setDemo(!payload.initialized);
+      setItems(payload.initialized ? (payload.items ?? []) : sampleSubscriptions(today));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setAuthRequired(true); setDemo(true); setItems(sampleSubscriptions(today)); setSyncError(null);
+      } else {
+        setSyncError(error instanceof Error ? error.message : "读取订阅失败。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [today]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadRecords(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadRecords]);
+
+  useEffect(() => {
+    type Tool = { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown };
+    const context = (document as Document & { modelContext?: { registerTool: (tool: Tool, options?: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
+    if (!context?.registerTool) return;
+    const lifecycle = new AbortController();
+    const register = (tool: Tool) => {
+      try {
+        void Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {
+          console.warn("WebMCP tool registration unavailable.");
+        });
+      } catch {
+        console.warn("WebMCP tool registration unavailable.");
+      }
+    };
+    register({
+      name: "list_memberships",
+      title: "读取会员清单",
+      description: "读取当前已保存的会员到期清单，不包含网页示例数据。",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: (input) => {
+        if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) throw new Error("请传入空对象。");
+        return { demo, items: demo ? [] : items.map(({ id, name, plan, endDate, amount, cycle, autoRenew }) => ({ id, name, plan, endDate, amount, cycle, autoRenew })) };
+      },
+    });
+    register({
+      name: "start_membership_creation",
+      title: "打开新增会员表单",
+      description: "打开新增表单并预填名称；由用户检查并点击保存，不会扣款。",
+      inputSchema: { type: "object", properties: { name: { type: "string", maxLength: 60 }, plan: { type: "string", maxLength: 80 } }, additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: (input) => {
+        if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("输入必须是对象。");
+        const values = input as Record<string, unknown>;
+        if (Object.keys(values).some(key => !["name", "plan"].includes(key))) throw new Error("存在不支持的字段。");
+        if ((values.name !== undefined && (typeof values.name !== "string" || values.name.length > 60)) || (values.plan !== undefined && (typeof values.plan !== "string" || values.plan.length > 80))) throw new Error("名称或套餐格式不正确。");
+        setSelected(null);
+        setDraft({ ...blankDraft(today), name: String(values.name ?? ""), plan: String(values.plan ?? "") });
+        setEditorOpen(true);
+        return new Promise(resolve => requestAnimationFrame(() => resolve({ opened: true })));
+      },
+    });
+    return () => lifecycle.abort();
+  }, [demo, items, today]);
+
+  const active = items.filter(i => remaining(i, today) >= 0);
+  const due = items.filter(i => stateOf(i, today) !== "healthy").sort((a, b) => a.endDate.localeCompare(b.endDate));
+  const monthly = active.reduce((sum, item) => sum + monthlyCost(item), 0);
+  const upcoming = active.filter(i => remaining(i, today) <= 30).reduce((sum, item) => sum + item.amount, 0);
+  const filtered = useMemo(() => items.filter(i =>
+    (category === "全部" || i.category === category) &&
+    (statusFilter === "all" || stateOf(i, today) === statusFilter) &&
+    `${i.name} ${i.plan} ${i.note}`.toLowerCase().includes(query.toLowerCase()),
+  ).sort((a, b) => sort === "price" ? b.amount - a.amount : sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : a.endDate.localeCompare(b.endDate)), [items, category, query, sort, statusFilter, today]);
+
+  function edit(item: Subscription | null = null) {
+    if (authRequired) { setLoginOpen(true); return; }
+    setSelected(item);
+    setDraft(item ? toDraft(item) : blankDraft(today));
+    setEditorOpen(true);
+  }
+
+  async function postAction(action: string, body: Record<string, unknown> = {}) {
+    try { return await apiRequest("/subscriptions", { action, ...body }); }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 401) { setAuthRequired(true); setLoginOpen(true); }
+      throw error;
+    }
+  }
+
+  async function signOut() {
+    try {
+      await apiRequest("/auth/logout", {});
+      setAuthRequired(true); setDemo(true); setItems(sampleSubscriptions(today));
+      setSelected(null); setEditorOpen(false); setShowReminders(false); setDraft(blankDraft(today));
+      toast.success("已退出登录");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "退出失败"); }
+  }
+
+  function draftPayload() {
+    const amount = Number(draft.amount);
+    const customDays = Number(draft.customDays);
+    const reminderDays = Number(draft.reminderDays);
+    if (!draft.name.trim()) throw new Error("请填写会员名称。");
+    if (!Number.isFinite(amount) || amount < 0) throw new Error("费用需要是有效的数字。");
+    if (draft.endDate <= draft.startDate) throw new Error("到期日期必须晚于开始日期。");
+    return { ...draft, id: selected && !selected.id.startsWith("example-") ? selected.id : (globalThis.crypto?.randomUUID?.() || ""), amount, customDays, reminderDays, version: selected?.version ?? 0 };
+  }
+
+  async function saveDraft() {
+    setSaving(true);
+    try {
+      const payload = draftPayload();
+      const action = selected && !selected.id.startsWith("example-") ? "update" : "create";
+      await postAction(action, action === "update" ? { id: selected?.id, version: selected?.version, item: payload } : { item: payload });
+      await loadRecords();
+      setEditorOpen(false);
+      toast.success(action === "update" ? "订阅已更新" : "订阅已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearDemo() {
+    setSaving(true);
+    try {
+      await postAction("initialize");
+      await loadRecords();
+      toast.success("已切换到空白清单");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "暂时无法初始化清单");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmChange() {
+    if (!confirmAction) return;
+    setSaving(true);
+    try {
+      if (confirmAction.kind === "delete") {
+        await postAction("delete", { id: confirmAction.item.id, version: confirmAction.item.version });
+        toast.success("订阅已删除");
+        if (selected?.id === confirmAction.item.id) setEditorOpen(false);
+      } else {
+        const item = confirmAction.item;
+        await postAction("renew", { id: item.id, version: item.version });
+        setEditorOpen(false);
+        toast.success("续费日期已记录", { description: "这里只更新你的记录，不会扣款或修改平台自动续费。" });
+      }
+      await loadRecords();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setSaving(false);
+      setConfirmAction(null);
+    }
+  }
+
+  const statusFilterLabel = statusFilter === "all" ? "" : statusNames[statusFilter as Status];
+
+  return <div className="app-shell">
+    <div className="ambient" aria-hidden="true" />
+    <main className="dashboard">
+      <header className="topbar">
+        <div className="brand"><h1>Gx404<span className="brand-dot">.</span></h1><span className="brand-divider" /><span className="brand-caption">会员看板</span></div>
+        <div className="header-actions">{authRequired ? <button className="button light" onClick={() => setLoginOpen(true)}>管理员登录</button> : <button className="button light" onClick={() => void signOut()}>退出</button>}<span className="header-date">{today.replaceAll("-", ".")}</span><button className="button light notification-button" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b>{due.length}</b>}</button><button className="button primary" onClick={() => edit()}><Plus size={17} />添加订阅</button></div>
+      </header>
+
+      {syncError && <div className="sync-banner" role="status"><Info size={16} /><span>{syncError}</span><button onClick={() => void loadRecords()}>重新读取</button></div>}
+      {authRequired && <div className="auth-banner"><ShieldCheck size={16} /><span>当前为示例看板。登录自己的管理员账号后，即可管理服务器上的会员数据。</span><button onClick={() => setLoginOpen(true)}>登录后管理</button></div>}
+
+      <section className="overview" aria-label="订阅总览">
+        <div className="summary-card"><div className="summary-label">有效订阅<LayoutGrid /></div><div className="summary-number">{active.length}<span>/ {items.length}</span></div><div className="summary-bottom"><div className="overview-bars">{items.map(i => <i key={i.id} className={stateOf(i, today)} />)}</div></div></div>
+        <button className="summary-card clickable" onClick={() => { setStatusFilter(statusFilter === "soon" ? "all" : "soon"); setCategory("全部"); }}><div className="summary-label">即将到期<Clock3 /></div><div className="summary-number amber">{items.filter(i => stateOf(i, today) === "soon").length}<span>项</span></div><div className="summary-bottom line"><span>已进入提前提醒时间</span><span className="tag amber-tag">需要留意</span></div></button>
+        <div className="summary-card"><div className="summary-label">月均支出<Wallet /></div><div className="summary-number"><small>¥</small>{currency(monthly)}</div><div className="summary-bottom line"><span>按续费周期折算</span><span className="green">年约 ¥{currency(monthly * 12)}</span></div></div>
+        <div className="summary-card"><div className="summary-label">30 天内到期金额<CreditCard /></div><div className="summary-number"><small>¥</small>{currency(upcoming)}</div><div className="summary-bottom line"><span>{active.filter(i => remaining(i, today) <= 30).length} 项会员需要留意</span><span className="green">人民币</span></div></div>
+      </section>
+
+      <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span>{statusFilterLabel && <button className="filter-clear" onClick={() => setStatusFilter("all")}>仅看{statusFilterLabel} ×</button>}</div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">价格从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select></div></div>
+      <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{categories.map((c, i) => { const Icon = categoryIcons[i]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{items.filter(item => item.category === c).length}</span></TabsTrigger>; })}</TabsList></Tabs>
+
+      {demo && <div className="demo-notice"><Info size={14} /><span>正在展示示例订阅与示例金额，不是你的实际会员数据。</span><button disabled={saving || authRequired} onClick={() => void clearDemo()}>从空白开始</button></div>}
+      <section className="subscription-grid" aria-label="会员列表">
+        {loading && <div className="loading-state"><span className="loading-pulse" />正在读取你的会员清单…</div>}
+        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const color = status === "expired" ? "#c96c62" : status === "soon" ? "#cda443" : "#54b78e"; return <article key={item.id} className={`subscription-card ${status}`}>
+          <div className="card-heading"><Logo item={item} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div><button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button></div>
+          <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
+          <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>
+          <div className="progress-caption"><span>本期剩余</span><span>{Math.round(fraction(item, today))}%</span></div><Segments value={fraction(item, today)} color={color} label={`${item.name}本期剩余${Math.round(fraction(item, today))}%`} />
+          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p>¥ <strong>{currency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div><div><span className="small-label"><RotateCw size={14} />续费方式</span><p className={item.autoRenew ? "green" : ""}>{item.autoRenew ? "自动续费" : "手动续费"}</p></div></div>
+          <div className="card-reminder"><Bell size={14} /><span>{item.reminderDays === 0 ? "到期当天提醒" : `提前 ${item.reminderDays} 天提醒`}</span><span className="reminder-method">网页内</span></div>
+          <div className="card-footer"><span><CalendarDays size={14} />{item.startDate.replaceAll("-", ".")} 开始</span><button onClick={() => edit(item)} className={status === "healthy" ? "renew-link" : "renew-link highlighted"}>{status === "expired" ? "去续费" : "续费 / 管理"}<ChevronRight size={14} /></button></div>
+        </article>; })}
+        {!loading && filtered.length === 0 && <div className="empty-state"><LayoutGrid size={32} /><h2>{items.length ? "没有找到符合条件的订阅" : "把你的第一个会员加进来"}</h2><p>{items.length ? "试试其他关键词或分类。" : "记录到期日，下次续费之前心里有数。"}</p><button className="button primary" onClick={() => items.length ? (setCategory("全部"), setQuery(""), setStatusFilter("all")) : edit()}>{items.length ? "清除筛选" : "添加订阅"}</button></div>}
+      </section>
+      <footer className="page-footer"><span><ShieldCheck size={14} />{demo ? "示例模式 · 未写入你的数据" : authRequired ? "登录后可保存私人清单" : syncError ? "同步遇到问题 · 请重试" : loading ? "正在读取私人清单" : "已连接私人订阅清单"}</span><span>到期日以本地日期计算 · 网页内提醒不等于后台推送</span><span>Gx404 · Memberships</span></footer>
+    </main>
+
+    <Dialog open={editorOpen} onOpenChange={setEditorOpen}><DialogContent className="membership-dialog"><DialogHeader><DialogTitle>{selected ? `管理 ${selected.name}` : "添加订阅"}</DialogTitle><DialogDescription>填写会员名称、费用和到期时间；这里只记录信息，不会触碰平台扣款。</DialogDescription></DialogHeader><form className="membership-form" onSubmit={event => { event.preventDefault(); void saveDraft(); }}>
+      <div className="form-grid"><label className="form-field wide"><span>会员名称 *</span><input autoFocus required maxLength={60} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="例如：Netflix" /></label><label className="form-field"><span>套餐名称</span><input maxLength={80} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })} placeholder="例如：标准会员" /></label><label className="form-field"><span>分类</span><select value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field"><span>费用（人民币） *</span><input required min="0" step="0.01" type="number" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></label><label className="form-field"><span>续费周期</span><select value={draft.cycle} onChange={e => setDraft({ ...draft, cycle: e.target.value as Draft["cycle"] })}>{Object.entries(cycles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{draft.cycle === "custom" && <label className="form-field"><span>自定义天数</span><input min="1" max="3650" type="number" value={draft.customDays} onChange={e => setDraft({ ...draft, customDays: e.target.value })} /></label>}<label className="form-field"><span>开始日期</span><input type="date" value={draft.startDate} onChange={e => setDraft({ ...draft, startDate: e.target.value })} /></label><label className="form-field"><span>到期日期 *</span><input required type="date" value={draft.endDate} onChange={e => setDraft({ ...draft, endDate: e.target.value })} /></label><label className="form-field"><span>提前提醒</span><select value={draft.reminderDays} onChange={e => setDraft({ ...draft, reminderDays: e.target.value })}><option value="0">到期当天</option><option value="1">提前 1 天</option><option value="3">提前 3 天</option><option value="7">提前 7 天</option><option value="14">提前 14 天</option><option value="30">提前 30 天</option></select></label><label className="switch-field"><Switch aria-label="记录自动续费设置" checked={draft.autoRenew} onCheckedChange={checked => setDraft({ ...draft, autoRenew: checked })} /><span><strong>自动续费</strong><small>只是记录当前设置，不会修改平台设置</small></span></label><label className="form-field wide"><span>备注</span><textarea maxLength={500} value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="可记录账号、付款渠道或想提醒自己的内容" /></label></div>
+      <div className="dialog-actions"><div className="dialog-left-actions">{selected && !selected.id.startsWith("example-") && <button type="button" className="text-danger" onClick={() => setConfirmAction({ kind: "delete", item: selected })}><Trash2 size={15} />删除</button>}{selected && <button type="button" className="text-action" onClick={() => downloadCalendar(selected)}><Download size={15} />导出日历</button>}</div><div className="dialog-right-actions"><button type="button" className="button light" onClick={() => setEditorOpen(false)}>取消</button>{selected && !selected.id.startsWith("example-") && <button type="button" className="button secondary" onClick={() => setConfirmAction({ kind: "renew", item: selected })}><RotateCw size={15} />记录续费</button>}<button type="submit" className="button primary" disabled={saving}>{saving ? "保存中…" : <><Check size={15} />保存</>}</button></div></div>
+    </form></DialogContent></Dialog>
+
+    <Dialog open={showReminders} onOpenChange={setShowReminders}><DialogContent className="membership-dialog"><DialogHeader><DialogTitle>到期提醒</DialogTitle><DialogDescription>按每个会员设置的提前天数，列出现在需要留意的项目。</DialogDescription></DialogHeader><div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · ¥{currency(item.amount)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂时没有需要处理的到期提醒。</p>}</div><div className="information-box"><Bell size={16} /><p>网页内提醒只在打开页面时显示。你可以给某条记录导出 .ics，导入手机或电脑日历后由日历应用负责通知；续费后记得重新导出。</p></div></DialogContent></Dialog>
+
+    <AlertDialog open={Boolean(confirmAction)} onOpenChange={open => { if (!open && !saving) setConfirmAction(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{confirmAction?.kind === "delete" ? "删除这条订阅？" : "记录一次续费？"}</AlertDialogTitle><AlertDialogDescription>{confirmAction?.kind === "delete" ? `“${confirmAction?.item.name}”的记录会从你的私人清单中删除，删除后无法在这里恢复。` : `将“${confirmAction?.item.name}”的到期日按当前周期顺延，只更新本看板记录，不会真的扣款。`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction variant={confirmAction?.kind === "delete" ? "destructive" : "default"} disabled={saving} onClick={event => { event.preventDefault(); void confirmChange(); }}>{saving ? "处理中…" : confirmAction?.kind === "delete" ? "确认删除" : "确认记录"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onSuccess={loadRecords} />
+    <Toaster position="bottom-right" richColors theme="light" />
+  </div>;
+}

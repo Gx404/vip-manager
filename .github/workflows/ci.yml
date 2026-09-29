@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-ubuntu:
+    name: Node checks on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: vip-manager-source-release
+          path: outputs/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  node-windows:
+    name: Node checks on Windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  docker:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    needs: node-ubuntu
+    timeout-minutes: 20
+    env:
+      PUBLIC_ORIGIN: http://127.0.0.1:8080
+      ADMIN_USERNAME: ciadmin
+      ADMIN_PASSWORD: ci-only-password-1234567890
+      COOKIE_SECURE: "false"
+      BIND_ADDRESS: 127.0.0.1
+      HTTP_PORT: "8080"
+      APP_TIMEZONE: Asia/Shanghai
+      VIP_SMOKE_ALLOW_WRITE: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.14.0
+          package-manager-cache: false
+      - name: Validate Compose file
+        run: docker compose config --quiet
+      - name: Build and start containers
+        run: docker compose up -d --build --wait --wait-timeout 180
+      - name: Check real frontend and API
+        run: node scripts/smoke-deployment.mjs prepare
+      - name: Restart backend and wait for health
+        run: |
+          docker compose restart backend
+          docker compose up -d --wait --wait-timeout 180
+      - name: Verify persistence, then remove test record
+        run: node scripts/smoke-deployment.mjs verify
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=100 backend frontend
+      - name: Remove isolated CI containers and test volume
+        if: always()
+        run: docker compose down -v

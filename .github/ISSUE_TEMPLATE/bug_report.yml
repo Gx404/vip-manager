@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先阅读 docs/TROUBLESHOOTING.md。不要提交密码、Cookie、.env、数据库或真实会员清单。
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: 写明部署方式、操作系统、浏览器、提交号和 Node/Docker 版本。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写出可重复的操作。
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志
+      description: 删除密码、Cookie、Token、域名隐私和会员资料后再粘贴。

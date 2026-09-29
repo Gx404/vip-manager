@@ -1,0 +1,30 @@
+{
+  "name": "gx404-memberships-selfhosted",
+  "version": "1.0.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gx404/vip-manager.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.14.0 <25"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --workspace frontend",
+    "typecheck": "tsc -p frontend/tsconfig.json && tsc -p backend/tsconfig.json",
+    "test": "node --test backend/tests/*.test.ts",
+    "docs:check": "node scripts/check-docs.mjs",
+    "check": "npm run docs:check && npm run typecheck && npm test && npm run build",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3"
+  }
+}
