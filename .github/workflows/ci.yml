@@ -54,6 +54,7 @@ jobs:
     timeout-minutes: 20
     env:
       PUBLIC_ORIGIN: http://127.0.0.1:8080
+      PUBLIC_DASHBOARD: "true"
       ADMIN_USERNAME: ciadmin
       ADMIN_PASSWORD: ci-only-password-1234567890
       COOKIE_SECURE: "false"

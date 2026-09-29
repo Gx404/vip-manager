@@ -69,6 +69,16 @@ export function createApp(db: DatabaseSync, config: Config) {
     res.clearCookie(cookieName,cookieOptions);
     res.json({ signedOut:true });
   });
+  // Public reading is an explicit deployment choice. Editing always goes through authentication below.
+  app.get("/api/dashboard", (req,res) => {
+    const user = auth.session(tokenFromCookie(req.get("Cookie")));
+    if (user) {
+      res.json({ items: subscriptions.list(user.id).items, canManage: true, publicDashboard: config.publicDashboard });
+      return;
+    }
+    if (!config.publicDashboard) throw new ApiError(401,"请先登录自己的管理员账号。","AUTH_REQUIRED");
+    res.json({ items: subscriptions.listPublic(), canManage: false, publicDashboard: true });
+  });
   app.use("/api", (req,res,next) => {
     const user = auth.session(tokenFromCookie(req.get("Cookie")));
     if (!user) return next(new ApiError(401,"请先登录自己的管理员账号。","AUTH_REQUIRED"));

@@ -31,6 +31,14 @@ export class SubscriptionService {
     return { items: rows.map(fromRow), initialized: Boolean(preference?.initialized) || rows.length > 0 };
   }
 
+  /** Read only the single administrator's display fields; never select private notes or real versions. */
+  listPublic(): Subscription[] {
+    const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,cycle,custom_days,start_date,end_date,
+      reminder_days,auto_renew,color,'' AS note,0 AS version FROM subscriptions
+      WHERE user_id=(SELECT id FROM users ORDER BY id LIMIT 1) ORDER BY end_date,id`).all();
+    return rows.map(fromRow);
+  }
+
   execute(owner: number, body: unknown): { item?: Subscription; id?: string; initialized?: boolean } {
     const input = actionSchema.parse(body);
     if (input.action === "initialize") {

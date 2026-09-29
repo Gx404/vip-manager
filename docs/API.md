@@ -7,11 +7,14 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | /api/health | 健康状态，不返回配置或私人数据 |
+| GET | /api/dashboard | 首页快照：items、canManage、publicDashboard；公开模式支持匿名只读 |
 | POST | /api/auth/login | JSON：username、password |
 | GET | /api/auth/session | 当前用户 |
 | POST | /api/auth/logout | JSON：{}，销毁会话 |
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
+
+`/api/dashboard` 登录后返回完整当前用户记录；未登录且 `PUBLIC_DASHBOARD=true` 时仅返回单管理员的展示字段，`note` 固定为空字符串、`version` 为 0、`canManage=false`，不返回其他用户记录。未开启公开展示时返回 401。所有响应不缓存。`/api/subscriptions` 的读写、`/api/auth/session` 始终需要真实登录态；公开看板不授予写入权限。
 
 订阅操作：
 
@@ -23,7 +26,9 @@
 
 会员记录字段：id、name、plan、category、amount、cycle、customDays、startDate、endDate、reminderDays、autoRenew、note、color、version。金额单位为人民币元（最多两位小数），数据库内部保存整数分。日期为 YYYY-MM-DD，1900–2200 年，endDate 必须大于 startDate。
 
-category：影音娱乐、AI 工具、云盘存储、效率办公、其他服务。cycle：monthly、quarterly、yearly、custom。
+category：影音娱乐、购物会员、AI 工具、云盘存储、效率办公、生活服务、游戏会员、学习教育、网络服务、其他服务。cycle：monthly、quarterly、yearly、custom。
+
+startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew 只是平台续费方式记录，不触发扣款或自动日期滚动；只有显式 renew/update 操作修改日期。
 
 成功返回 item 或 id；错误返回 error、code。状态码：400 输入错误、401 未登录/凭据错误、403 来源或防跨站校验失败、404 记录不存在、409 版本冲突、413 请求过大、429 登录尝试过多、500 服务异常。
 

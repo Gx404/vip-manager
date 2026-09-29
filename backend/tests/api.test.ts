@@ -12,7 +12,8 @@ import { openDatabase } from "../src/database.ts";
 import { bootstrapAdmin, AuthService } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { SubscriptionService } from "../src/subscriptions.ts";
-import { renewDate, sampleSubscriptions, type Subscription } from "../../shared/subscriptions.ts";
+import { renewDate, type Subscription } from "../../shared/subscriptions.ts";
+import { sampleSubscriptions } from "./fixtures.ts";
 
 let directory:string,db:DatabaseSync,server:Server,url:string,cookie:string;
 const password="test-only-not-a-production-password";

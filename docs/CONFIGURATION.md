@@ -7,6 +7,7 @@
 | 变量 | 默认值 / 示例 | 说明 |
 | --- | --- | --- |
 | PUBLIC_ORIGIN | https://members.example.com | Compose 必填；实际前端来源，无路径和尾部斜杠 |
+| PUBLIC_DASHBOARD | false | true 时匿名展示真实会员名称、套餐、金额、日期等；备注仍需登录，所有写操作仍需登录 |
 | ADMIN_USERNAME | admin | 空数据库首次创建的账号；3–60 位字母、数字或 _.- |
 | ADMIN_PASSWORD | 无 | Compose 必填；首次建库密码，16–256 字符 |
 | COOKIE_SECURE | true | 正式 HTTPS 保持 true；仅可信 HTTP 测试设 false |

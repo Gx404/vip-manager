@@ -45,6 +45,16 @@ async function main() {
   assert.equal(js.status, 200);
   assert.match(js.headers.get("content-type") || "", /javascript/);
   assert.equal((await request("/api/subscriptions")).status, 401);
+  const publicDashboard = process.env.PUBLIC_DASHBOARD === "true";
+  const anonymous = await request("/api/dashboard");
+  assert.equal(anonymous.status, publicDashboard ? 200 : 401);
+  if (publicDashboard) {
+    const state = await anonymous.json();
+    assert.equal(state.canManage, false);
+    assert.ok(state.items.every(item => item.note === "" && item.version === 0));
+    assert.equal(state.items.length, phase === "prepare" ? 0 : 1);
+  }
+  assert.equal((await request("/api/subscriptions", { action: "initialize" })).status, 401);
   const login = await request("/api/auth/login", { username, password });
   assert.equal(login.status, 200);
   const setCookie = login.headers.get("set-cookie") || "";
@@ -54,7 +64,7 @@ async function main() {
   if (phase === "prepare") {
     assert.equal(original.items.length, 0, "Use a fresh disposable database only");
     const item = {
-      id, name: "CI deployment test", plan: "isolated", category: "其他服务",
+      id, name: "CI deployment test", plan: "isolated", category: "购物会员",
       amount: 1.23, cycle: "monthly", customDays: 30,
       startDate: "2198-12-31", endDate: "2199-01-31",
       reminderDays: 7, autoRenew: false, note: "", color: "#269979", version: 0,
@@ -81,6 +91,12 @@ async function main() {
   }
   await json("/api/auth/logout", {});
   assert.equal((await request("/api/subscriptions")).status, 401);
+  if (publicDashboard) {
+    const state = await json("/api/dashboard");
+    assert.equal(state.canManage, false);
+    assert.equal(state.items.length, phase === "prepare" ? 1 : 0);
+    assert.ok(state.items.every(item => item.note === "" && item.version === 0));
+  }
   console.log("Deployment smoke check passed: " + phase);
 }
 

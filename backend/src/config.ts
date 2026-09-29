@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 export type Config = {
   host: string; port: number; databasePath: string; publicOrigin: string;
-  cookieSecure: boolean; trustProxy: boolean; timeZone: string;
+  cookieSecure: boolean; trustProxy: boolean; timeZone: string; publicDashboard: boolean;
   adminUsername: string; adminPassword?: string; sessionSeconds: number;
 };
 
@@ -34,6 +34,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminPassword: env.ADMIN_PASSWORD,
     databasePath: env.DATABASE_PATH ? resolve(env.DATABASE_PATH) : fileURLToPath(new URL("../../data/memberships.sqlite", import.meta.url)),
     cookieSecure: boolean("COOKIE_SECURE", true), trustProxy: boolean("TRUST_PROXY", false),
+    publicDashboard: boolean("PUBLIC_DASHBOARD", false),
     sessionSeconds: 7 * 24 * 60 * 60,
   };
 }
