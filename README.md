@@ -1,0 +1,121 @@
+# VIP Manager · 会员到期看板
+
+把视频会员、AI 工具、网盘和其他订阅放在一个页面，查看到期时间、续费金额和提前提醒。浅灰背景、白色卡片、顶部总览和分段进度条，适合放在自己的服务器上使用。
+
+**前后端分离，数据存到自己的 SQLite 数据库。不依赖 ChatGPT 登录、第三方托管平台或 Komari。**
+
+> 提醒范围：目前支持网页内提醒和 `.ics` 日历导出。关闭网页后，应用本身不会发送邮件、微信或系统通知。“自动续费”只是记录，不会扣款，也不会替你取消平台订阅。
+
+## 已有功能
+
+- 新增、编辑、删除会员，记录套餐、分类、金额、备注和开始/到期日期。
+- 月付、季付、年付、自定义天数；提前 0 / 1 / 3 / 7 / 14 / 30 天提醒。
+- 到期排序、价格排序、分类筛选、搜索、提醒中心。
+- 有效订阅数、月均支出、30 天内到期金额；金额目前统一为人民币。
+- 手动记录续费，由后端计算新日期，处理月末和闰年。
+- 管理员登录、会话鉴权、登录限流、版本冲突保护。
+- SQLite 持久化、在线备份、管理员密码重置。
+- 前后端独立 Dockerfile，Docker Compose 一条命令启动服务。
+
+当前是**单管理员个人应用**，没有公开注册、多用户管理、平台账单同步或后台推送。首次看到的是示例数据，示例价格不代表服务商现价，不会自动写入数据库。
+
+## 快速部署到服务器
+
+需要已安装 Docker Engine、Docker Compose v2 和 Git；宿主机不需要安装 Node.js 或数据库。下面命令在 Linux 服务器执行。
+
+### 1. 下载与配置
+
+```sh
+git clone https://github.com/Gx404/vip-manager.git
+cd vip-manager
+cp .env.example .env
+chmod 600 .env
+```
+
+编辑 `.env`：
+
+| 配置 | 怎么填 |
+| --- | --- |
+| `PUBLIC_ORIGIN` | 实际访问域名，如 `https://members.example.com`，不要带末尾 `/` |
+| `ADMIN_USERNAME` | 自己的管理员账号，默认 `admin` |
+| `ADMIN_PASSWORD` | 自己生成的 16–256 字符强密码，不能留空 |
+
+可以用 `openssl rand -hex 24` 在自己的终端生成密码并存入密码管理器。不要把 `.env`、密码或数据库上传到 GitHub。
+
+仓库如果仍为私有，下载需要有仓库读取权限的 GitHub 账号；请使用自己的 SSH 或 Git 凭据管理器，不要把令牌拼进下载链接。也可以在仓库页面选择 **Code → Download ZIP**，解压后进入项目目录。
+
+### 2. 启动服务
+
+```sh
+docker compose up -d --build --wait --wait-timeout 180
+docker compose ps
+curl --fail http://127.0.0.1:8080/api/health
+```
+
+正常返回 `{"status":"ok"}`。首次构建需要下载镜像和 npm 依赖，耗时取决于服务器网络。
+
+### 3. 配置域名并登录
+
+在现有宝塔、1Panel、Nginx 或 Caddy 中，将你的 HTTPS 域名反向代理到 **`http://127.0.0.1:8080`**。默认只监听服务器本机，后端 3000 端口不直接暴露。
+
+打开域名 → **管理员登录** → **从空白开始** → **添加订阅**。正式部署保持 `COOKIE_SECURE=true`。
+
+面板自身运行在容器中时，`127.0.0.1` 指向面板容器，不是宿主机；请按 [部署说明](docs/DEPLOYMENT.md) 接入对应网络。
+
+## 文档导航
+
+| 文档 | 内容 |
+| --- | --- |
+| [部署说明](docs/DEPLOYMENT.md) | Linux、宝塔/1Panel、HTTPS、临时 IP 测试、前后端单独部署 |
+| [使用说明](docs/USAGE.md) | 添加会员、提醒、续费、费用统计、日历导出 |
+| [配置说明](docs/CONFIGURATION.md) | 每个环境变量、默认值和注意事项 |
+| [备份与维护](docs/OPERATIONS.md) | 备份、隔离恢复、更新、回退、密码重置 |
+| [常见问题](docs/TROUBLESHOOTING.md) | 登录失败、403/502、端口、构建、数据问题 |
+| [开发与验收](docs/DEVELOPMENT.md) | Windows 开发、文件结构、自动测试、服务器验收 |
+| [API 文档](docs/API.md) | 接口、字段、鉴权、错误码 |
+| [安全说明](SECURITY.md) | 数据保护、部署边界和问题反馈 |
+| [第三方声明](THIRD_PARTY_NOTICES.md) | 第三方组件与保留的许可证 |
+
+## 架构
+
+```text
+浏览器 ── HTTPS ── 域名 / 外层反向代理
+                          │
+                  frontend：Nginx + React 静态页面
+                          │ /api
+                  backend：Node.js + Express API
+                          │
+                  SQLite 持久化数据卷
+```
+
+前端和后端分别构建、分别运行，通过 HTTP API 交互。默认同域 `/api` 代理，**前后端分离不需要两个域名**。前端使用 React、TypeScript、Vite；后端使用 Node.js 24.x、Express 和原生 SQLite。
+
+## Windows 本地运行
+
+安装 Node.js **24.14.0 或更新的 24.x**，下载本仓库，在项目根目录执行：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，设置自己的 ADMIN_PASSWORD
+npm ci
+npm run dev
+```
+
+访问 `http://127.0.0.1:5173`。安装依赖、填写密码后，也可以双击 `启动前后端.bat`。按 Ctrl+C 停止。开发数据库与生产数据分开，不要将开发服务暴露到公网。
+
+## 检查和发布
+
+```sh
+npm run check
+npm run package
+```
+
+`check` 执行文档链接检查、TypeScript 检查、接口测试和前端构建。打包文件位于 `outputs/`，不包含密码、数据库和依赖目录。GitHub 仓库里的源码不提交 `node_modules` 或构建产物，部署时会重新构建。
+
+自动检查配置见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。它不需要你的服务器密钥，不会自动部署到服务器。是否通过以仓库 **Actions** 的实际结果为准，配置存在不等于已经执行成功。
+
+## 数据与授权
+
+数据保存在 Docker 命名卷中。正常重启、重建和 `docker compose down` 不删除数据；**不要使用 `docker compose down -v`**。更新前请先 [备份](docs/OPERATIONS.md)。旧演示站的数据不会自动同步或迁移到自托管版本。
+
+项目自身的开源许可证尚未选定，仓库可见性也不代表已授予开源许可。公开分发前由维护者确认授权方式；第三方组件保留各自的许可证。不要删除已有的第三方许可声明。
