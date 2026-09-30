@@ -28,7 +28,7 @@
 
 category：影音娱乐、购物会员、AI 工具、云盘存储、效率办公、生活服务、游戏会员、学习教育、网络服务、其他服务。cycle：monthly、quarterly、yearly、custom。
 
-startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew 只是平台续费方式记录，不触发扣款或自动日期滚动；只有显式 renew/update 操作修改日期。
+startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=true 时，独立后台任务在 APP_TIMEZONE 的 endDate 当天进入下一账期，启动时和每分钟检查一次；停机后直接补齐到包含当天的一期。不依赖 GET 请求，不会实际扣款或确认支付。自动更新原子地递增 version 并写入内部续期审计表；旧表单保存可能返回 409。改 startDate/endDate/cycle/customDays 会重设续费日锚点；只改备注或开关不会丢失原续费日。续费锚点、审计记录仅保存在后端，不通过公开 API 返回。
 
 成功返回 item 或 id；错误返回 error、code。状态码：400 输入错误、401 未登录/凭据错误、403 来源或防跨站校验失败、404 记录不存在、409 版本冲突、413 请求过大、429 登录尝试过多、500 服务异常。
 

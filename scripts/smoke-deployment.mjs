@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { dateInTimeZone } from "../shared/billing.ts";
+import { brands } from "../shared/brands.ts";
 
 /**
  * Exercise an explicitly opted-in disposable deployment through its public HTTP entry.
@@ -14,6 +16,7 @@ async function main() {
   const phase = process.argv[2];
   if (!["prepare", "verify"].includes(phase)) throw new Error("参数必须为 prepare 或 verify。");
   const id = "8a85d6af-9e66-4ec8-9f47-cc37c342e013";
+  const automaticId = "3242e966-16a0-4a77-b7d7-e35f86986777";
   let cookie = "";
   const request = (path, body) => fetch(base + path, {
     method: body === undefined ? "GET" : "POST",
@@ -44,6 +47,14 @@ async function main() {
   const js = await request(asset[1]);
   assert.equal(js.status, 200);
   assert.match(js.headers.get("content-type") || "", /javascript/);
+  for (const brand of brands) {
+    const icon = await request(brand.icon);
+    assert.equal(icon.status, 200, brand.icon);
+    assert.match(icon.headers.get("content-type") || "", /image\//);
+    const bytes = Buffer.from(await icon.arrayBuffer());
+    if (brand.icon.endsWith(".svg")) assert.match(bytes.toString("utf8"), /^<svg\b/);
+    else assert.equal(bytes.subarray(0, 4).toString("hex"), "00000100");
+  }
   assert.equal((await request("/api/subscriptions")).status, 401);
   const publicDashboard = process.env.PUBLIC_DASHBOARD === "true";
   const anonymous = await request("/api/dashboard");
@@ -52,7 +63,7 @@ async function main() {
     const state = await anonymous.json();
     assert.equal(state.canManage, false);
     assert.ok(state.items.every(item => item.note === "" && item.version === 0));
-    assert.equal(state.items.length, phase === "prepare" ? 0 : 1);
+    assert.equal(state.items.length, phase === "prepare" ? 0 : 2);
   }
   assert.equal((await request("/api/subscriptions", { action: "initialize" })).status, 401);
   const login = await request("/api/auth/login", { username, password });
@@ -79,13 +90,31 @@ async function main() {
       action: "renew", id, version: updated.item.version,
     });
     assert.equal(renewed.item.endDate, "2199-02-28");
+    await json("/api/subscriptions", {
+      action: "create", item: {
+        ...item, id: automaticId, name: "CI automatic renewal test", autoRenew: true,
+        startDate: "2020-01-31", endDate: "2020-02-29", note: "auto-record-survives-restart",
+      },
+    }, 201);
   } else {
     const item = original.items.find(record => record.id === id);
     assert.ok(item, "Record must survive container restart");
     assert.equal(item.note, "survives-restart");
     assert.equal(item.endDate, "2199-02-28");
     assert.equal(item.amount, 1.23);
+    const automatic = original.items.find(record => record.id === automaticId);
+    assert.ok(automatic, "Automatic record must survive restart");
+    const today = dateInTimeZone(new Date(), process.env.APP_TIMEZONE || "Asia/Shanghai");
+    assert.ok(automatic.startDate <= today && automatic.endDate > today, "Startup task must catch up without a browser or renew request");
+    assert.equal(automatic.version, 1, "Catch-up must be a single atomic update");
+    assert.equal(automatic.note, "auto-record-survives-restart");
+    assert.equal(automatic.amount, 1.23);
+    assert.equal(automatic.autoRenew, true);
+    const end = new Date(automatic.endDate + "T00:00:00Z");
+    const monthLast = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+    assert.equal(end.getUTCDate(), monthLast, "Original day 31 must survive month-end clamping");
     await json("/api/subscriptions", { action: "delete", id, version: item.version });
+    await json("/api/subscriptions", { action: "delete", id: automaticId, version: automatic.version });
     const state = await json("/api/subscriptions");
     assert.equal(state.items.length, 0);
   }
@@ -94,7 +123,7 @@ async function main() {
   if (publicDashboard) {
     const state = await json("/api/dashboard");
     assert.equal(state.canManage, false);
-    assert.equal(state.items.length, phase === "prepare" ? 1 : 0);
+    assert.equal(state.items.length, phase === "prepare" ? 2 : 0);
     assert.ok(state.items.every(item => item.note === "" && item.version === 0));
   }
   console.log("Deployment smoke check passed: " + phase);

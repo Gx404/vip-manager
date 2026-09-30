@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { renewDate, type Subscription } from "../../shared/subscriptions.ts";
+import { automaticPeriod, billingAnchor, dateInTimeZone } from "../../shared/billing.ts";
 import { actionSchema, dateSchema, subscriptionSchema } from "./validation.ts";
 import { ApiError } from "./errors.ts";
 import { transaction } from "./database.ts";
@@ -39,6 +40,32 @@ export class SubscriptionService {
     return rows.map(fromRow);
   }
 
+  /** Atomically catch up enabled records at their due date, keeping one audit event per changed record. */
+  advanceAutomaticRenewals(now = new Date()): number {
+    const today = dateSchema.parse(dateInTimeZone(now, this.timeZone));
+    return transaction(this.db, () => {
+      const rows = this.db.prepare("SELECT * FROM subscriptions WHERE auto_renew=1 AND end_date<=? ORDER BY user_id,id").all(today);
+      let changed = 0;
+      for (const row of rows) {
+        const item = fromRow(row);
+        const anchor = String(row.renewal_anchor_date) || billingAnchor(item);
+        const next = automaticPeriod(item, anchor, today);
+        if (!next) continue;
+        dateSchema.parse(next.startDate);
+        dateSchema.parse(next.endDate);
+        const result = this.db.prepare(`UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,
+          version=version+1,updated_at=? WHERE user_id=? AND id=? AND auto_renew=1 AND version=?`)
+          .run(next.startDate,next.endDate,anchor,now.getTime(),Number(row.user_id),item.id,item.version);
+        if (Number(result.changes) !== 1) continue;
+        this.db.prepare(`INSERT INTO automatic_renewal_events(user_id,subscription_id,previous_start_date,previous_end_date,
+          new_start_date,new_end_date,periods_advanced,created_at) VALUES(?,?,?,?,?,?,?,?)`)
+          .run(Number(row.user_id),item.id,item.startDate,item.endDate,next.startDate,next.endDate,next.periods,now.getTime());
+        changed++;
+      }
+      return changed;
+    });
+  }
+
   execute(owner: number, body: unknown): { item?: Subscription; id?: string; initialized?: boolean } {
     const input = actionSchema.parse(body);
     if (input.action === "initialize") {
@@ -54,8 +81,8 @@ export class SubscriptionService {
           throw new ApiError(409,"这条记录已经存在，请刷新确认，避免重复保存。");
         }
         this.db.prepare(`INSERT INTO subscriptions(user_id,id,name,plan,category,amount_cents,cycle,custom_days,start_date,end_date,
-          reminder_days,auto_renew,note,color,version,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`)
-          .run(owner,item.id,...values(item),Date.now());
+          reminder_days,auto_renew,note,color,version,updated_at,renewal_anchor_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`)
+          .run(owner,item.id,...values(item),Date.now(),billingAnchor(item));
         this.initialize(owner);
         return { item: this.get(owner,item.id) };
       });
@@ -71,17 +98,19 @@ export class SubscriptionService {
       if (input.action === "update") {
         const changed = subscriptionSchema.parse(input.item) as Subscription;
         if (changed.id !== item.id) throw new ApiError(400,"记录标识不一致。");
+        const scheduleChanged = changed.startDate !== item.startDate || changed.endDate !== item.endDate || changed.cycle !== item.cycle || changed.customDays !== item.customDays;
         this.db.prepare(`UPDATE subscriptions SET name=?,plan=?,category=?,amount_cents=?,cycle=?,custom_days=?,start_date=?,
           end_date=?,reminder_days=?,auto_renew=?,note=?,color=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?`)
           .run(...values(changed),Date.now(),owner,item.id,item.version);
+        if (scheduleChanged) this.db.prepare("UPDATE subscriptions SET renewal_anchor_date=? WHERE user_id=? AND id=?").run(billingAnchor(changed),owner,item.id);
       } else {
-        const parts = new Intl.DateTimeFormat("en-CA",{timeZone:this.timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts();
-        const part = (name: string) => parts.find(p => p.type===name)!.value;
-        const today = part("year")+"-"+part("month")+"-"+part("day");
+        const today = dateInTimeZone(new Date(), this.timeZone);
         const base = item.endDate > today ? item.endDate : today;
-        const end = dateSchema.parse(renewDate(base,item.cycle,item.customDays));
-        this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
-          .run(base,end,Date.now(),owner,item.id,item.version);
+        const savedAnchor = String(this.db.prepare("SELECT renewal_anchor_date FROM subscriptions WHERE user_id=? AND id=?").get(owner,item.id)?.renewal_anchor_date ?? "") || billingAnchor(item);
+        const anchor = item.endDate >= today ? savedAnchor : base;
+        const end = dateSchema.parse(item.endDate >= today ? automaticPeriod(item,anchor,base)!.endDate : renewDate(base,item.cycle,item.customDays));
+        this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
+          .run(base,end,anchor,Date.now(),owner,item.id,item.version);
       }
       return { item: this.get(owner,item.id) };
     });

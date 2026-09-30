@@ -11,12 +11,13 @@ export function openDatabase(filename: string): DatabaseSync {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     const version = Number(db.prepare("PRAGMA user_version").get()?.user_version);
-    if (version > 1) throw new Error("数据库版本高于当前程序，请勿降级运行。");
-    if (version < 1) {
-      const sql = readFileSync(new URL("../migrations/001_initial.sql", import.meta.url), "utf8");
+    const migrations = ["001_initial.sql", "002_automatic_renewals.sql"];
+    if (version > migrations.length) throw new Error("数据库版本高于当前程序，请勿降级运行。");
+    for (let index = version; index < migrations.length; index++) {
+      const sql = readFileSync(new URL("../migrations/" + migrations[index], import.meta.url), "utf8");
       transaction(db, () => {
         db!.exec(sql);
-        db!.exec("PRAGMA user_version = 1");
+        db!.exec("PRAGMA user_version = " + (index + 1));
       });
       db.exec("PRAGMA optimize");
     }

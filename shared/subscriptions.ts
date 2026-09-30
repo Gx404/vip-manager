@@ -14,16 +14,6 @@ export function dateKey(date = new Date()): string {
 export function dateNumber(date: string): number { return Date.parse(`${date}T00:00:00Z`) / 86400000; }
 export function shiftDate(date: string, days: number): string { return new Date((dateNumber(date) + days) * 86400000).toISOString().slice(0, 10); }
 export function remaining(item: Subscription, today: string): number { return Math.round(dateNumber(item.endDate) - dateNumber(today)); }
-/** Return 0–100% remaining in the entered billing period, not the lifetime of a membership. */
-export function fraction(item: Subscription, today: string): number {
-  return Math.max(0, Math.min(100, remaining(item, today) / Math.max(1, dateNumber(item.endDate) - dateNumber(item.startDate)) * 100));
-}
-/** Map remaining percentage to twenty distinct 5% bands: low red through amber to high green. */
-export function progressColor(value: number): string {
-  const percentage = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-  const band = Math.max(1, Math.ceil(percentage / 5));
-  return `hsl(${Math.round((band - 1) * 150 / 19)} 64% 42%)`;
-}
 export function stateOf(item: Subscription, today: string) {
   const days = remaining(item, today);
   return days < 0 ? "expired" : days <= item.reminderDays ? "soon" : "healthy";

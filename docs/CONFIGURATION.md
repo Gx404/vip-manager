@@ -11,7 +11,7 @@
 | ADMIN_USERNAME | admin | 空数据库首次创建的账号；3–60 位字母、数字或 _.- |
 | ADMIN_PASSWORD | 无 | Compose 必填；首次建库密码，16–256 字符 |
 | COOKIE_SECURE | true | 正式 HTTPS 保持 true；仅可信 HTTP 测试设 false |
-| APP_TIMEZONE | Asia/Shanghai | 服务端续费使用的 IANA 时区 |
+| APP_TIMEZONE | Asia/Shanghai | 手动续费和自动续期的 IANA 时区；自动记录在到期日 00:00 后首次检查时进入下一期 |
 | BIND_ADDRESS | 127.0.0.1 | Compose 宿主机端口绑定地址 |
 | HTTP_PORT | 8080 | Compose 前端宿主机端口 |
 | HOST | 独立运行 127.0.0.1；容器 0.0.0.0 | API 监听地址 |

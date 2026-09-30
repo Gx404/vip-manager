@@ -80,7 +80,7 @@ jobs:
         run: |
           docker compose restart backend
           docker compose up -d --wait --wait-timeout 180
-      - name: Verify persistence, then remove test record
+      - name: Verify persistence and automatic renewal, then remove test records
         run: node scripts/smoke-deployment.mjs verify
       - name: Show logs on failure
         if: failure()

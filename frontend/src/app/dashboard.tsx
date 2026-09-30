@@ -13,9 +13,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { LoginDialog } from "@/components/login-dialog";
+import { ServiceLogo } from "@/components/service-logo";
 import { apiRequest, ApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { categories, cycles, dateKey, fraction, monthlyCost, remaining, renewDate, progressColor, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
+import { categories, cycles, dateKey, monthlyCost, remaining, renewDate, occupiedCategories, durationMeter, durationColor, durationLabel, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
 
 const categoryIcons = { "影音娱乐": Music2, "购物会员": ShoppingBag, "AI 工具": Sparkles, "云盘存储": Cloud, "效率办公": BriefcaseBusiness, "生活服务": Coffee, "游戏会员": Gamepad2, "学习教育": GraduationCap, "网络服务": Globe, "其他服务": LayoutGrid };
 const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
@@ -36,12 +37,7 @@ function toDraft(item: Subscription): Draft {
 }
 
 function Segments({ value, color, label }: { value: number; color: string; label: string }) {
-  return <Progress value={value} aria-label={label} aria-valuetext={`${Math.round(value)}%，每格 5%`} title="20 格，每格 5%；剩余越少，颜色越接近红色" className="segments" style={{ "--segment-color": color } as CSSProperties} />;
-}
-
-function Logo({ item }: { item: Subscription }) {
-  const Icon = item.name === "iCloud+" ? Cloud : item.name === "ChatGPT" ? Sparkles : item.name === "网易云音乐" ? Music2 : null;
-  return <div className="service-logo" style={{ background: `${item.color}10`, color: item.color }}>{Icon ? <Icon size={20} /> : item.name.slice(0, 1)}</div>;
+  return <Progress value={value} aria-label={label} aria-valuetext={label} title={label} className="segments" style={{ "--segment-color": color } as CSSProperties} />;
 }
 
 function escapeIcs(value: string) {
@@ -96,9 +92,9 @@ export default function Dashboard() {
   }, []);
 
   /** Refresh display data and permissions together; ignore responses superseded by login/logout. */
-  const loadRecords = useCallback(async () => {
+  const loadRecords = useCallback(async (background = false) => {
     const sequence = ++requestSequence.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     try {
       const payload = await apiRequest<DashboardSnapshot>("/dashboard");
       if (sequence !== requestSequence.current) return;
@@ -106,8 +102,13 @@ export default function Dashboard() {
       setPublicDashboard(payload.publicDashboard);
       setSyncError(null);
       setItems(payload.items);
+      setCategory(current => current === "全部" || payload.items.some(item => item.category === current) ? current : "全部");
     } catch (error) {
       if (sequence !== requestSequence.current) return;
+      if (background && !(error instanceof ApiError && error.status === 401)) {
+        setSyncError(error instanceof Error ? error.message : "自动刷新失败，请重试。");
+        return;
+      }
       setItems([]);
       setAuthRequired(true);
       setPublicDashboard(false);
@@ -124,6 +125,19 @@ export default function Dashboard() {
     const timer = window.setTimeout(() => void loadRecords(), 0);
     return () => window.clearTimeout(timer);
   }, [loadRecords]);
+
+  useEffect(() => {
+    // Do not overwrite an open editor or create avoidable optimistic-lock conflicts while typing.
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !editorOpen && !loginOpen && !saving && !confirmAction) {
+        setToday(dateKey());
+        void loadRecords(true);
+      }
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [editorOpen, loginOpen, saving, confirmAction, loadRecords]);
 
   useEffect(() => {
     type Tool = { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown };
@@ -171,6 +185,8 @@ export default function Dashboard() {
     return () => lifecycle.abort();
   }, [authRequired, items, today]);
 
+  const visibleCategories = occupiedCategories(items);
+  const horizonDays = items.reduce((maximum, item) => Math.max(maximum, remaining(item, today)), 365);
   const active = items.filter(i => remaining(i, today) >= 0);
   const due = items.filter(i => stateOf(i, today) !== "healthy").sort((a, b) => a.endDate.localeCompare(b.endDate));
   const monthly = active.reduce((sum, item) => sum + monthlyCost(item), 0);
@@ -256,7 +272,7 @@ export default function Dashboard() {
         const item = confirmAction.item;
         await postAction("renew", { id: item.id, version: item.version });
         setEditorOpen(false);
-        toast.success("续费日期已记录", { description: "这里只更新你的记录，不会扣款或修改平台自动续费。" });
+        toast.success("续费日期已记录", { description: "这里只更新你的记录，不会扣款或修改服务商的订阅设置。" });
       }
       await loadRecords();
     } catch (error) {
@@ -288,16 +304,16 @@ export default function Dashboard() {
       </section>
 
       <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span>{statusFilterLabel && <button className="filter-clear" onClick={() => setStatusFilter("all")}>仅看{statusFilterLabel} ×</button>}</div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">价格从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select></div></div>
-      <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{categories.map(c => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{items.filter(item => item.category === c).length}</span></TabsTrigger>; })}</TabsList></Tabs>
+      <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{visibleCategories.map(({ category: c, count }) => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{count}</span></TabsTrigger>; })}</TabsList></Tabs>
 
       <section className="subscription-grid" aria-label="会员列表">
         {loading && <div className="loading-state"><span className="loading-pulse" />正在读取你的会员清单…</div>}
-        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const progress = fraction(item, today); const color = progressColor(progress); return <article key={item.id} className={`subscription-card ${status}`}>
-          <div className="card-heading"><Logo item={item} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div>{!authRequired && <button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button>}</div>
+        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const progress = durationMeter(days, horizonDays); const color = durationColor(days); return <article key={item.id} className={`subscription-card ${status}`}>
+          <div className="card-heading"><ServiceLogo name={item.name} color={item.color} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div>{!authRequired && <button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button>}</div>
           <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
           <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>
-          <div className="progress-caption"><span>本期剩余 <span className="muted">· 每格 5%</span></span><span>{Math.round(progress)}%</span></div><Segments value={progress} color={color} label={`${item.name}本期剩余${Math.round(progress)}%`} />
-          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p>¥ <strong>{currency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div><div><span className="small-label"><RotateCw size={14} />续费方式</span><p className={item.autoRenew ? "green" : ""} title="仅记录平台设置；不会自动扣款或顺延看板日期">{item.autoRenew ? "平台自动续费" : "手动续费"}</p></div></div>
+          <div className="progress-caption"><span>剩余时长</span><span>{durationLabel(days)}</span></div><Segments value={progress} color={color} label={`${item.name}：${days < 0 ? "已过期" : `剩余 ${days} 天`}，条形按剩余天数统一比较`} />
+          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p>¥ <strong>{currency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div><div><span className="small-label"><RotateCw size={14} />续费方式</span><p className={item.autoRenew ? "green" : ""} title={item.autoRenew ? "到期日自动进入下一期，仅更新看板日期，不实际扣款" : "续费后请手动更新记录"}>{item.autoRenew ? "自动续费" : "手动续费"}</p></div></div>
           <div className="card-reminder"><Bell size={14} /><span>{item.reminderDays === 0 ? "到期当天提醒" : `提前 ${item.reminderDays} 天提醒`}</span><span className="reminder-method">网页内</span></div>
           <div className="card-footer"><span><CalendarDays size={14} />{item.startDate.replaceAll("-", ".")} 本期开始</span>{!authRequired && <button onClick={() => edit(item)} className={status === "healthy" ? "renew-link" : "renew-link highlighted"}>{status === "expired" ? "去续费" : "续费 / 管理"}<ChevronRight size={14} /></button>}</div>
         </article>; })}
@@ -307,9 +323,9 @@ export default function Dashboard() {
     </main>
 
     <Dialog open={editorOpen} onOpenChange={setEditorOpen}><DialogContent className="membership-dialog"><DialogHeader><DialogTitle>{selected ? `管理 ${selected.name}` : "添加订阅"}</DialogTitle><DialogDescription>填写会员名称、费用和到期时间；这里只记录信息，不会触碰平台扣款。</DialogDescription></DialogHeader><form className="membership-form" onSubmit={event => { event.preventDefault(); void saveDraft(); }}>
-      <div className="form-grid"><label className="form-field wide"><span>会员名称 *</span><input autoFocus required maxLength={60} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="例如：Netflix" /></label><label className="form-field"><span>套餐名称</span><input maxLength={80} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })} placeholder="例如：标准会员" /></label><label className="form-field"><span>分类</span><select value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field"><span>费用（人民币） *</span><input required min="0" step="0.01" type="number" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></label><label className="form-field"><span>续费周期</span><select value={draft.cycle} onChange={e => setDraft({ ...draft, cycle: e.target.value as Draft["cycle"] })}>{Object.entries(cycles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{draft.cycle === "custom" && <label className="form-field"><span>自定义天数</span><input min="1" max="3650" type="number" value={draft.customDays} onChange={e => setDraft({ ...draft, customDays: e.target.value })} /></label>}<label className="form-field"><span>本期开始日期 *</span><input required type="date" value={draft.startDate} onChange={e => setDraft({ ...draft, startDate: e.target.value })} /></label><label className="form-field"><span>本期到期日期 *</span><input required type="date" value={draft.endDate} onChange={e => setDraft({ ...draft, endDate: e.target.value })} /></label><label className="form-field"><span>提前提醒</span><select value={draft.reminderDays} onChange={e => setDraft({ ...draft, reminderDays: e.target.value })}><option value="0">到期当天</option><option value="1">提前 1 天</option><option value="3">提前 3 天</option><option value="7">提前 7 天</option><option value="14">提前 14 天</option><option value="30">提前 30 天</option></select></label><label className="switch-field"><Switch aria-label="记录自动续费设置" checked={draft.autoRenew} onCheckedChange={checked => setDraft({ ...draft, autoRenew: checked })} /><span><strong>平台已开启自动续费</strong><small>仅作记录，不会自动扣款或修改本期日期；到账后请点“记录续费”</small></span></label><label className="form-field wide"><span>私人备注（仅登录后可见）</span><textarea maxLength={500} value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="可记录最初开通时间、账号或付款渠道；不要保存密码" /></label></div>
-      <div className="billing-help"><p><strong>日期填写的是当前这一期，不是最早开通日期。</strong>例如五月开通、每月 15 日续费，现在已续到十月：本期填 9 月 15 日 → 10 月 15 日。最初开通日期可以记在私人备注中。</p><p>进度 = 本期剩余天数 ÷ 本期总天数。请以平台实际账单日期为准，已保存日期不会自动改动。</p><button type="button" className="text-action" onClick={suggestEndDate}>按本期开始日期和周期计算到期日</button></div>
-      <div className="dialog-actions"><div className="dialog-left-actions">{selected && <button type="button" className="text-danger" onClick={() => setConfirmAction({ kind: "delete", item: selected })}><Trash2 size={15} />删除</button>}{selected && <button type="button" className="text-action" onClick={() => downloadCalendar(selected)}><Download size={15} />导出日历</button>}</div><div className="dialog-right-actions"><button type="button" className="button light" onClick={() => setEditorOpen(false)}>取消</button>{selected && <button type="button" className="button secondary" onClick={() => setConfirmAction({ kind: "renew", item: selected })}><RotateCw size={15} />记录续费</button>}<button type="submit" className="button primary" disabled={saving}>{saving ? "保存中…" : <><Check size={15} />保存</>}</button></div></div>
+      <div className="form-grid"><label className="form-field wide"><span>会员名称 *</span><input autoFocus required maxLength={60} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="例如：Netflix" /></label><label className="form-field"><span>套餐名称</span><input maxLength={80} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })} placeholder="例如：标准会员" /></label><label className="form-field"><span>分类</span><select value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field"><span>费用（人民币） *</span><input required min="0" step="0.01" type="number" value={draft.amount} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></label><label className="form-field"><span>续费周期</span><select value={draft.cycle} onChange={e => setDraft({ ...draft, cycle: e.target.value as Draft["cycle"] })}>{Object.entries(cycles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{draft.cycle === "custom" && <label className="form-field"><span>自定义天数</span><input min="1" max="3650" type="number" value={draft.customDays} onChange={e => setDraft({ ...draft, customDays: e.target.value })} /></label>}<label className="form-field"><span>本期开始日期 *</span><input required type="date" value={draft.startDate} onChange={e => setDraft({ ...draft, startDate: e.target.value })} /></label><label className="form-field"><span>本期到期日期 *</span><input required type="date" value={draft.endDate} onChange={e => setDraft({ ...draft, endDate: e.target.value })} /></label><label className="form-field"><span>提前提醒</span><select value={draft.reminderDays} onChange={e => setDraft({ ...draft, reminderDays: e.target.value })}><option value="0">到期当天</option><option value="1">提前 1 天</option><option value="3">提前 3 天</option><option value="7">提前 7 天</option><option value="14">提前 14 天</option><option value="30">提前 30 天</option></select></label><label className="switch-field"><Switch aria-label="自动续费" checked={draft.autoRenew} onCheckedChange={checked => setDraft({ ...draft, autoRenew: checked })} /><span><strong>自动续费</strong><small>开启后到期日自动更新下一期，关掉网页也生效。仅更新看板，不实际扣款；停订或扣款失败时请关闭。</small></span></label><label className="form-field wide"><span>私人备注（仅登录后可见）</span><textarea maxLength={500} value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="可记录最初开通时间、账号或付款渠道；不要保存密码" /></label></div>
+      <div className="billing-help"><p><strong>日期填写的是当前这一期，不是最早开通日期。</strong>例如五月开通、每月 15 日续费，现在已续到十月：本期填 9 月 15 日 → 10 月 15 日。最初开通日期可以记在私人备注中。</p><p>条形长度与颜色按剩余天数统一比较，方便区分几天、几个月。自动续费开启后，到期日按所选周期顺延；日期以平台账单为准。</p><button type="button" className="text-action" onClick={suggestEndDate}>按本期开始日期和周期计算到期日</button></div>
+      <div className="dialog-actions"><div className="dialog-left-actions">{selected && <button type="button" className="text-danger" onClick={() => setConfirmAction({ kind: "delete", item: selected })}><Trash2 size={15} />删除</button>}{selected && <button type="button" className="text-action" onClick={() => downloadCalendar(selected)}><Download size={15} />导出日历</button>}</div><div className="dialog-right-actions"><button type="button" className="button light" onClick={() => setEditorOpen(false)}>取消</button>{selected && !selected.autoRenew && !draft.autoRenew && <button type="button" className="button secondary" onClick={() => setConfirmAction({ kind: "renew", item: selected })}><RotateCw size={15} />记录续费</button>}<button type="submit" className="button primary" disabled={saving}>{saving ? "保存中…" : <><Check size={15} />保存</>}</button></div></div>
     </form></DialogContent></Dialog>
 
     <Dialog open={showReminders} onOpenChange={setShowReminders}><DialogContent className="membership-dialog"><DialogHeader><DialogTitle>到期提醒</DialogTitle><DialogDescription>按每个会员设置的提前天数，列出现在需要留意的项目。</DialogDescription></DialogHeader><div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · ¥{currency(item.amount)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂时没有需要处理的到期提醒。</p>}</div><div className="information-box"><Bell size={16} /><p>网页内提醒只在打开页面时显示。你可以给某条记录导出 .ics，导入手机或电脑日历后由日历应用负责通知；续费后记得重新导出。</p></div></DialogContent></Dialog>

@@ -11,7 +11,7 @@ import { openDatabase } from "../src/database.ts";
 import { bootstrapAdmin } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { SubscriptionService } from "../src/subscriptions.ts";
-import { categories, fraction, progressColor, type Subscription, type DashboardSnapshot } from "../../shared/subscriptions.ts";
+import { categories, type Subscription, type DashboardSnapshot } from "../../shared/subscriptions.ts";
 
 const password = "isolated-dashboard-test-password";
 const config = readConfig({ PUBLIC_ORIGIN: "http://dashboard.test", COOKIE_SECURE: "false", ADMIN_PASSWORD: password, PUBLIC_DASHBOARD: "true" });
@@ -66,7 +66,7 @@ test("公开看板只返回管理员真实记录，隐藏备注、真实版本�
   assert.equal(state.items[0].name, "88VIP");
   assert.equal(state.items[0].note, "");
   assert.equal(state.items[0].version, 0);
-  assert.equal(state.items[0].endDate, fixture.endDate); // autoRenew is metadata, never date rollover.
+  assert.equal(state.items[0].endDate, fixture.endDate); // Reads never perform renewals; the independent scheduler owns date rollover.
   assert.equal(new SubscriptionService(db, config.timeZone).list(1).items[0].version, 1);
 });
 
@@ -115,24 +115,4 @@ test("新增分类可保存和读取，不需要修改现有数据库结构", ()
     assert.equal(saved.category, category);
     service.execute(1, { action: "delete", id, version: saved.version });
   }
-});
-
-test("剩余比例每 5% 对应独立颜色，并正确限制越界输入", () => {
-  const colors = Array.from({ length: 20 }, (_, i) => progressColor((i + 1) * 5));
-  assert.equal(new Set(colors).size, 20);
-  assert.equal(progressColor(1), progressColor(5));
-  assert.notEqual(progressColor(5), progressColor(5.01));
-  assert.equal(progressColor(-5), progressColor(0));
-  assert.equal(progressColor(101), progressColor(100));
-  assert.equal(progressColor(NaN), progressColor(0));
-});
-
-test("月付进度只按已录入的本期日期计算；不会用周期或自动续费掩盖过期", () => {
-  const item = { ...fixture, cycle: "monthly" as const, startDate: "2026-09-15", endDate: "2026-10-15" };
-  assert.equal(fraction(item, "2026-09-30"), 50);
-  assert.equal(fraction(item, "2026-09-01"), 100);
-  assert.equal(fraction(item, "2026-10-15"), 0);
-  assert.equal(fraction(item, "2026-10-16"), 0);
-  assert.equal(item.startDate, "2026-09-15");
-  assert.equal(item.endDate, "2026-10-15");
 });
