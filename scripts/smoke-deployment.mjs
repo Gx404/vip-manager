@@ -53,6 +53,7 @@ async function main() {
     assert.match(icon.headers.get("content-type") || "", /image\//);
     const bytes = Buffer.from(await icon.arrayBuffer());
     if (brand.icon.endsWith(".svg")) assert.match(bytes.toString("utf8"), /^<svg\b/);
+    else if (brand.icon.endsWith(".png")) assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     else assert.equal(bytes.subarray(0, 4).toString("hex"), "00000100");
   }
   assert.equal((await request("/api/subscriptions")).status, 401);

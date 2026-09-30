@@ -1,4 +1,4 @@
-import { categories, type Subscription } from "./subscriptions.ts";
+import { categories, dateNumber, remaining, type Subscription } from "./subscriptions.ts";
 
 /** Return only occupied categories, in the configured order; the editor still offers every category. */
 export function occupiedCategories(items: Pick<Subscription, "category">[]): { category: typeof categories[number]; count: number }[] {
@@ -7,11 +7,10 @@ export function occupiedCategories(items: Pick<Subscription, "category">[]): { c
   return categories.map(category => ({ category, count: counts.get(category) ?? 0 })).filter(value => value.count > 0);
 }
 
-/** A shared remaining-days ruler. Square-root easing keeps short durations visible; it is not a billing percentage. */
-export function durationMeter(days: number, horizonDays = 365): number {
-  const horizon = Number.isFinite(horizonDays) ? Math.max(365, horizonDays) : 365;
-  const remaining = Number.isFinite(days) ? Math.max(0, Math.min(days, horizon)) : 0;
-  return Math.sqrt(remaining / horizon) * 100;
+/** Return whether an expiry is between today and the inclusive day limit; expired items are excluded. */
+export function dueWithin(item: Subscription, today: string, limit: number): boolean {
+  const days = remaining(item, today);
+  return days >= 0 && days <= limit;
 }
 
 const timeStops = [
@@ -34,10 +33,11 @@ export function durationColor(days: number): string {
   return timeStops[timeStops.length - 1][1];
 }
 
-/** Return the remaining fraction of the entered billing period for a compact percentage label. */
+/** Return the entered period's remaining percentage, clamped to 0–100 for both label and bar. */
 export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate">, today: string): number {
-  const dateNumber = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10))) / 86400000;
-  const total = Math.max(1, dateNumber(item.endDate) - dateNumber(item.startDate));
-  const left = Math.max(0, Math.min(total, dateNumber(item.endDate) - dateNumber(today)));
+  const total = dateNumber(item.endDate) - dateNumber(item.startDate);
+  const days = dateNumber(item.endDate) - dateNumber(today);
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(days)) return 0;
+  const left = Math.max(0, Math.min(total, days));
   return Math.round(left / total * 100);
 }

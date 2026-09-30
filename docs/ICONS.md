@@ -6,7 +6,7 @@
 
 | 服务 | 常用别名 | 图标来源 |
 | --- | --- | --- |
-| 百度网盘 | 百度网盘、百度云盘、百度云、BaiduNetdisk、BaiduPan | [Simple Icons Baidu SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/baidu.svg) |
+| 百度网盘 | 百度网盘、百度云盘、百度云、BaiduNetdisk、BaiduPan | [百度网盘官网原始 88×88 图标](https://nd-static.bdstatic.com/m-static/wp-brand/img/logo-pan.6af52c5e.png) |
 | OpenAI / ChatGPT | OpenAI、ChatGPT、GPT、GPT Plus、GPT Pro | [LobeHub OpenAI SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/openai.svg) |
 | Claude | Claude、Anthropic | [LobeHub Claude SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/claude-color.svg) |
 | DeepSeek | DeepSeek、深度求索 | [LobeHub DeepSeek SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/deepseek-color.svg) |
@@ -15,7 +15,7 @@
 | 网易云音乐 | 网易云音乐、网易云黑胶、网易云、NeteaseMusic、CloudMusic | [Simple Icons NetEase Cloud Music SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/neteasecloudmusic.svg) |
 | 哔哩哔哩 | 哔哩哔哩、Bilibili、B站 | [Simple Icons Bilibili SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/bilibili.svg) |
 
-资源核对日期：2026-09-30。只根据名称展示品牌标识，不验证服务商账户、订阅真伪或付款状态，也不自动读取第三方网站数据。
+资源核对日期：2026-09-30。百度网盘使用其官网引用的原始 PNG，其他匹配品牌使用 SVG；不再放大 32×32 favicon，也不把通用百度标志当成网盘标志。统一 44px 图标区域与 36px 图像尺寸，不添加第二层边框或阴影，保留品牌图形原本比例。只根据名称展示品牌标识，不验证服务商账户、订阅真伪或付款状态，也不自动读取第三方网站数据。
 
 ## 增加其他图标
 
