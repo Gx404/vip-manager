@@ -6,14 +6,14 @@
 
 | 服务 | 常用别名 | 图标来源 |
 | --- | --- | --- |
-| 百度网盘 | 百度网盘、百度云盘、百度云、BaiduNetdisk、BaiduPan | [官网声明的 favicon](https://nd-static.bdstatic.com/m-static/wp-brand/favicon.ico) |
+| 百度网盘 | 百度网盘、百度云盘、百度云、BaiduNetdisk、BaiduPan | [Simple Icons Baidu SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/baidu.svg) |
 | OpenAI / ChatGPT | OpenAI、ChatGPT、GPT、GPT Plus、GPT Pro | [LobeHub OpenAI SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/openai.svg) |
 | Claude | Claude、Anthropic | [LobeHub Claude SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/claude-color.svg) |
 | DeepSeek | DeepSeek、深度求索 | [LobeHub DeepSeek SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/deepseek-color.svg) |
 | Gemini | Gemini、Google Gemini | [LobeHub Gemini SVG](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/gemini-color.svg) |
-| 淘宝 / 88VIP | 淘宝、88VIP、Taobao | [淘宝 favicon](https://www.taobao.com/favicon.ico) |
-| 网易云音乐 | 网易云音乐、网易云黑胶、网易云、NeteaseMusic、CloudMusic | [网易云音乐 favicon](https://music.163.com/favicon.ico) |
-| 哔哩哔哩 | 哔哩哔哩、Bilibili、B站 | [哔哩哔哩 favicon](https://www.bilibili.com/favicon.ico) |
+| 淘宝 / 88VIP | 淘宝、88VIP、Taobao | [Simple Icons Taobao SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/taobao.svg) |
+| 网易云音乐 | 网易云音乐、网易云黑胶、网易云、NeteaseMusic、CloudMusic | [Simple Icons NetEase Cloud Music SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/neteasecloudmusic.svg) |
+| 哔哩哔哩 | 哔哩哔哩、Bilibili、B站 | [Simple Icons Bilibili SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/bilibili.svg) |
 
 资源核对日期：2026-09-30。只根据名称展示品牌标识，不验证服务商账户、订阅真伪或付款状态，也不自动读取第三方网站数据。
 
@@ -26,4 +26,4 @@
 
 ## 使用边界
 
-LobeHub SVG 的 MIT 代码许可证保存在 [LOBE-ICONS-LICENSE.txt](../frontend/public/brands/LOBE-ICONS-LICENSE.txt)。官网 favicon 及所有品牌名称、商标的权利属于对应权利人，不由本项目重新授权；图标库的代码许可证不授予商标权。不表示合作或背书，再分发或商业使用前应核对适用品牌要求。项目没有开放任意图标地址或上传入口。
+LobeHub SVG 的 MIT 代码许可证保存在 [LOBE-ICONS-LICENSE.txt](../frontend/public/brands/LOBE-ICONS-LICENSE.txt)；Simple Icons SVG 的 CC0 许可证保存在 [SIMPLE-ICONS-LICENSE.md](../frontend/public/brands/SIMPLE-ICONS-LICENSE.md)。所有品牌名称、商标的权利属于对应权利人，不由本项目重新授权；图标库的代码许可证不授予商标权。不表示合作或背书，再分发或商业使用前应核对适用品牌要求。项目没有开放任意图标地址或上传入口。

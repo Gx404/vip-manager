@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  Bell, BriefcaseBusiness, CalendarDays, Check, ChevronRight, Cloud, Clock3,
+  Bell, BriefcaseBusiness, Check, Cloud, Clock3,
   CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus, RotateCw,
   Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Wallet, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import { LoginDialog } from "@/components/login-dialog";
 import { ServiceLogo } from "@/components/service-logo";
 import { apiRequest, ApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { categories, cycles, dateKey, monthlyCost, remaining, renewDate, occupiedCategories, durationMeter, durationColor, durationLabel, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
+import { categories, cycles, dateKey, monthlyCost, remaining, renewDate, occupiedCategories, durationMeter, durationColor, periodPercentage, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
 
 const categoryIcons = { "影音娱乐": Music2, "购物会员": ShoppingBag, "AI 工具": Sparkles, "云盘存储": Cloud, "效率办公": BriefcaseBusiness, "生活服务": Coffee, "游戏会员": Gamepad2, "学习教育": GraduationCap, "网络服务": Globe, "其他服务": LayoutGrid };
 const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
@@ -85,9 +85,15 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [saving, setSaving] = useState(false);
+  const [clock, setClock] = useState(() => new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setToday(dateKey()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -188,12 +194,13 @@ export default function Dashboard() {
   const visibleCategories = occupiedCategories(items);
   const horizonDays = items.reduce((maximum, item) => Math.max(maximum, remaining(item, today)), 365);
   const active = items.filter(i => remaining(i, today) >= 0);
+  const sevenDayDue = active.filter(i => remaining(i, today) <= 7);
   const due = items.filter(i => stateOf(i, today) !== "healthy").sort((a, b) => a.endDate.localeCompare(b.endDate));
   const monthly = active.reduce((sum, item) => sum + monthlyCost(item), 0);
   const upcoming = active.filter(i => remaining(i, today) <= 30).reduce((sum, item) => sum + item.amount, 0);
   const filtered = useMemo(() => items.filter(i =>
     (category === "全部" || i.category === category) &&
-    (statusFilter === "all" || stateOf(i, today) === statusFilter) &&
+    (statusFilter === "all" || (statusFilter === "deadline7" ? remaining(i, today) >= 0 && remaining(i, today) <= 7 : stateOf(i, today) === statusFilter)) &&
     `${i.name} ${i.plan} ${i.note}`.toLowerCase().includes(query.toLowerCase()),
   ).sort((a, b) => sort === "price" ? b.amount - a.amount : sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : a.endDate.localeCompare(b.endDate)), [items, category, query, sort, statusFilter, today]);
 
@@ -283,7 +290,8 @@ export default function Dashboard() {
     }
   }
 
-  const statusFilterLabel = statusFilter === "all" ? "" : statusNames[statusFilter as Status];
+  const statusFilterLabel = statusFilter === "all" ? "" : statusFilter === "deadline7" ? "7天内到期" : statusNames[statusFilter as Status];
+  const footerTime = clock.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).replaceAll("/", ".");
 
   return <div className="app-shell">
     <div className="ambient" aria-hidden="true" />
@@ -298,8 +306,8 @@ export default function Dashboard() {
 
       <section className="overview" aria-label="订阅总览">
         <div className="summary-card"><div className="summary-label">有效订阅<LayoutGrid /></div><div className="summary-number">{active.length}<span>/ {items.length}</span></div><div className="summary-bottom"><div className="overview-bars">{items.map(i => <i key={i.id} className={stateOf(i, today)} />)}</div></div></div>
-        <button className="summary-card clickable" onClick={() => { setStatusFilter(statusFilter === "soon" ? "all" : "soon"); setCategory("全部"); }}><div className="summary-label">即将到期<Clock3 /></div><div className="summary-number amber">{items.filter(i => stateOf(i, today) === "soon").length}<span>项</span></div><div className="summary-bottom line"><span>已进入提前提醒时间</span><span className="tag amber-tag">需要留意</span></div></button>
-        <div className="summary-card"><div className="summary-label">月均支出<Wallet /></div><div className="summary-number"><small>¥</small>{currency(monthly)}</div><div className="summary-bottom line"><span>按续费周期折算</span><span className="green">年约 ¥{currency(monthly * 12)}</span></div></div>
+        <button className="summary-card clickable" onClick={() => { setStatusFilter(statusFilter === "deadline7" ? "all" : "deadline7"); setCategory("全部"); }}><div className="summary-label">7天内到期<Clock3 /></div><div className="summary-number amber">{sevenDayDue.length}<span>项</span></div><div className="summary-bottom line"><span>固定查看未来 7 天</span><span className="tag amber-tag">需要留意</span></div></button>
+        <div className="summary-card" title="月均支出 = 月付金额 + 季付金额÷3 + 年付金额÷12 + 自定义金额÷天数×30"><div className="summary-label">月均支出<Wallet /></div><div className="summary-number"><small>¥</small>{currency(monthly)}</div><div className="summary-bottom line"><span>月付原价 · 季付÷3 · 年付÷12</span><span className="green">年约 ¥{currency(monthly * 12)}</span></div></div>
         <div className="summary-card"><div className="summary-label">30 天内到期金额<CreditCard /></div><div className="summary-number"><small>¥</small>{currency(upcoming)}</div><div className="summary-bottom line"><span>{active.filter(i => remaining(i, today) <= 30).length} 项会员需要留意</span><span className="green">人民币</span></div></div>
       </section>
 
@@ -312,14 +320,12 @@ export default function Dashboard() {
           <div className="card-heading"><ServiceLogo name={item.name} color={item.color} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div>{!authRequired && <button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button>}</div>
           <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
           <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>
-          <div className="progress-caption"><span>剩余时长</span><span>{durationLabel(days)}</span></div><Segments value={progress} color={color} label={`${item.name}：${days < 0 ? "已过期" : `剩余 ${days} 天`}，条形按剩余天数统一比较`} />
+          <div className="progress-caption"><span>剩余时长</span><span>{periodPercentage(item, today)}%</span></div><Segments value={progress} color={color} label={`${item.name}：${days < 0 ? "已过期" : `剩余 ${days} 天`}，条形按剩余天数统一比较`} />
           <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p>¥ <strong>{currency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div><div><span className="small-label"><RotateCw size={14} />续费方式</span><p className={item.autoRenew ? "green" : ""} title={item.autoRenew ? "到期日自动进入下一期，仅更新看板日期，不实际扣款" : "续费后请手动更新记录"}>{item.autoRenew ? "自动续费" : "手动续费"}</p></div></div>
-          <div className="card-reminder"><Bell size={14} /><span>{item.reminderDays === 0 ? "到期当天提醒" : `提前 ${item.reminderDays} 天提醒`}</span><span className="reminder-method">网页内</span></div>
-          <div className="card-footer"><span><CalendarDays size={14} />{item.startDate.replaceAll("-", ".")} 本期开始</span>{!authRequired && <button onClick={() => edit(item)} className={status === "healthy" ? "renew-link" : "renew-link highlighted"}>{status === "expired" ? "去续费" : "续费 / 管理"}<ChevronRight size={14} /></button>}</div>
         </article>; })}
         {!loading && !syncError && filtered.length === 0 && <div className="empty-state"><LayoutGrid size={32} /><h2>{items.length ? "没有找到符合条件的订阅" : authRequired ? publicDashboard ? "还没有会员记录" : "登录查看你的会员" : "把你的第一个会员加进来"}</h2><p>{items.length ? "试试其他关键词或分类。" : authRequired ? "管理员登录后可以添加和管理订阅。" : "记录本期到期日，下次续费之前心里有数。"}</p><button className="button primary" onClick={() => items.length ? (setCategory("全部"), setQuery(""), setStatusFilter("all")) : edit()}>{items.length ? "清除筛选" : authRequired ? "管理员登录" : "添加订阅"}</button></div>}
       </section>
-      <footer className="page-footer"><span><ShieldCheck size={14} />{syncError ? "读取失败 · 请重试" : loading ? "正在读取会员清单" : authRequired ? publicDashboard ? "真实会员 · 只读展示 · 登录后管理" : "私人看板 · 登录后查看" : publicDashboard ? "管理模式 · 会员公开展示，备注不公开" : "管理模式 · 私人订阅清单"}</span><span>到期日以本地日期计算 · 网页内提醒不等于后台推送</span><span>Gx404 · Memberships</span></footer>
+      <footer className="page-footer"><span>{footerTime}</span></footer>
     </main>
 
     <Dialog open={editorOpen} onOpenChange={setEditorOpen}><DialogContent className="membership-dialog"><DialogHeader><DialogTitle>{selected ? `管理 ${selected.name}` : "添加订阅"}</DialogTitle><DialogDescription>填写会员名称、费用和到期时间；这里只记录信息，不会触碰平台扣款。</DialogDescription></DialogHeader><form className="membership-form" onSubmit={event => { event.preventDefault(); void saveDraft(); }}>

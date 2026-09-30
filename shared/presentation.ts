@@ -34,12 +34,10 @@ export function durationColor(days: number): string {
   return timeStops[timeStops.length - 1][1];
 }
 
-/** Compact approximate duration alongside the exact day count displayed prominently on the card. */
-export function durationLabel(days: number): string {
-  if (days < 0) return "已过期";
-  if (days === 0) return "今天到期";
-  if (days < 7) return "不到一周";
-  if (days < 30) return `约 ${Math.round(days / 7)} 周`;
-  if (days < 365) return `约 ${Math.round(days / 30)} 个月`;
-  return `约 ${Number((days / 365).toFixed(1))} 年`;
+/** Return the remaining fraction of the entered billing period for a compact percentage label. */
+export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate">, today: string): number {
+  const dateNumber = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10))) / 86400000;
+  const total = Math.max(1, dateNumber(item.endDate) - dateNumber(item.startDate));
+  const left = Math.max(0, Math.min(total, dateNumber(item.endDate) - dateNumber(today)));
+  return Math.round(left / total * 100);
 }

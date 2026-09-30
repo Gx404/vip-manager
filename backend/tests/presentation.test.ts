@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { occupiedCategories, durationMeter, durationColor, durationLabel } from "../../shared/presentation.ts";
+import { occupiedCategories, durationMeter, durationColor, periodPercentage } from "../../shared/presentation.ts";
 import { brands, matchBrand } from "../../shared/brands.ts";
 
 test("category filters omit empty categories and do not depend on a search/status filter", () => {
@@ -24,7 +24,8 @@ test("duration colors change smoothly with actual days and use safe bounds", () 
   assert.equal(new Set(colors).size, colors.length);
   assert.ok(colors.every(color => /^#[a-f0-9]{6}$/.test(color)));
   assert.equal(durationColor(-1), durationColor(0)); assert.equal(durationColor(Infinity), durationColor(0));
-  assert.equal(durationLabel(0), "今天到期"); assert.equal(durationLabel(-1), "已过期");
+  assert.equal(periodPercentage({ startDate: "2026-09-01", endDate: "2026-10-01" }, "2026-09-16"), 50);
+  assert.equal(periodPercentage({ startDate: "2026-09-01", endDate: "2026-10-01" }, "2026-10-02"), 0);
 });
 
 test("subscription names recognize Chinese/English/full-width aliases, while unknown services fall back", () => {
