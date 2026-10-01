@@ -13,6 +13,10 @@
 | POST | /api/auth/logout | JSON：{}，销毁会话 |
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
+| GET | /api/subscriptions/history | 私人流水；可选 subscriptionId、offset（默认 0）、limit（默认 50，最大 100）；返回 logs、total |
+| GET | /api/backup | 当前用户全量业务 JSON，带下载响应头，不含密码或会话 |
+| POST | /api/backup/preview | { backup }，完整校验并返回计数及 revision，不写入数据 |
+| POST | /api/backup/import | { backup, mode, expectedRevision, confirmReplace? }，事务导入 |
 
 `/api/dashboard` 登录后返回完整当前用户记录；未登录且 `PUBLIC_DASHBOARD=true` 时仅返回单管理员的展示字段，`note` 固定为空字符串、`version` 为 0、`canManage=false`，不返回其他用户记录。未开启公开展示时返回 401。所有响应不缓存。`/api/subscriptions` 的读写、`/api/auth/session` 始终需要真实登录态；公开看板不授予写入权限。
 
@@ -21,7 +25,8 @@
 - initialize：将当前用户清单设为已初始化，不删除任何记录。
 - create：item 为完整会员记录；id 可留空由服务端生成 UUID。
 - update：id、version、完整 item。item.id 必须匹配 id。
-- renew：id、version。新日期由后端按照已保存的周期和 APP_TIMEZONE 计算，不信任浏览器传来的续费日期。
+- renew：id、version、可选 requestId（UUID，用于重试幂等）。返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。
+- undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；返回恢复后的 item，流水标记 undoneAt 而不是删除。
 - delete：id、version。
 
 会员记录字段：id、name、plan、category、amount、cycle、customDays、startDate、endDate、reminderDays、autoRenew、note、color、version。金额单位为人民币元（最多两位小数），数据库内部保存整数分。日期为 YYYY-MM-DD，1900–2200 年，endDate 必须大于 startDate。
@@ -32,4 +37,12 @@ startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=t
 
 成功返回 item 或 id；错误返回 error、code。状态码：400 输入错误、401 未登录/凭据错误、403 来源或防跨站校验失败、404 记录不存在、409 版本冲突、413 请求过大、429 登录尝试过多、500 服务异常。
 
-登录失败限制：每个后端识别的客户端地址 15 分钟最多 10 次。限制保存在数据库中，重启后仍有效。默认 Compose 下如果外层还有反向代理，地址可能聚合为同一代理地址；这会更保守地限流，不影响数据隔离。
+登录限制：SHA-256(IP + ':' + username) 复合桶，每 15 分钟最多 10 次失败/进行中的校验；回环地址窗口降为 30 秒并告警，成功登录清除对应桶。429 携带真实剩余 Retry-After；最多同时执行 2 次密码校验，最多保留 10,000 个活动桶，防止换用户名无限消耗内存/数据库。IP 必须来自受控反代链，不能直接采用客户端伪造的头。正确代理配置仍是必要条件，不能宣称单靠用户名分桶就解决所有 DoS。
+
+## JSON 格式与并发恢复
+
+格式：application 为 vip-manager、formatVersion 为 1、currency 为 CNY，另有 exportedAt、subscriptions、renewalLogs。订阅增加 renewalAnchorDate；流水字段见 [shared/renewals.ts](../shared/renewals.ts)。历史未知金额为 null，不能伪造为 0；删除订阅不删除新流水。私人接口始终鉴权，公开看板不返回流水/锚点。
+
+preview 返回 revision、subscriptions、logs、existing、newSubscriptions、skippedSubscriptions、newLogs。import 必须提交原 revision 作为 expectedRevision，预览后任何业务变化会返回 409。mode=merge 只插入新 ID；mode=replace 还必须 confirmReplace=true，替换当前用户业务数据，不改变账号。成功返回 importedSubscriptions、importedLogs、skippedSubscriptions。导入后的版本递增，旧表单失效，导入流水不可快捷撤销。
+
+所有文件在写入前完成日期、金额、ID 唯一性、账期锚点、格式版本校验，写入过程事务化。普通请求体 20 KB；仅已鉴权的两个导入端点允许 20 MB，最多 2,000 条订阅和 10,000 条流水。

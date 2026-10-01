@@ -114,7 +114,7 @@ test("startup scheduler advances already-due data and repeated starts do not ren
 
 test("v1 migration preserves records, and anchors survive database reopen", async t => {
   const directory = await mkdtemp(join(tmpdir(), "vip-migration-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.after(() => rm(directory, { recursive: true, force: true, maxRetries:3, retryDelay:100 }));
   const filename = join(directory, "v1.sqlite");
   const legacy = new DatabaseSync(filename);
   try {
@@ -125,7 +125,7 @@ test("v1 migration preserves records, and anchors survive database reopen", asyn
   } finally { legacy.close(); }
   let db = openDatabase(filename);
   try {
-    assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 2);
+    assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 3);
     let service = new SubscriptionService(db, "Asia/Shanghai");
     assert.equal(service.list(1).items[0].endDate, "2026-02-28");
     assert.equal(service.advanceAutomaticRenewals(at("2026-02-28")), 1);
@@ -133,5 +133,29 @@ test("v1 migration preserves records, and anchors survive database reopen", asyn
     assert.equal(service.advanceAutomaticRenewals(at("2026-03-31")), 1);
     assert.equal(service.list(1).items[0].endDate, "2026-04-30");
     assert.equal(service.list(1).items[0].note, "private");
+  } finally { db.close(); }
+});
+
+test("v2 automatic audit migrates once with unknown historical amount and retains the original period", async t => {
+  const directory = await mkdtemp(join(tmpdir(), "vip-migration-v2-"));
+  t.after(() => rm(directory, { recursive:true, force:true, maxRetries:3, retryDelay:100 }));
+  const filename=join(directory,"v2.sqlite"), legacy=new DatabaseSync(filename);
+  let id:string;
+  try {
+    legacy.exec(await readFile(new URL("../migrations/001_initial.sql",import.meta.url),"utf8"));
+    legacy.exec(await readFile(new URL("../migrations/002_automatic_renewals.sql",import.meta.url),"utf8"));
+    legacy.exec("PRAGMA user_version=2; INSERT INTO users VALUES(1,'owner','test-hash',0)");
+    id=randomUUID();
+    legacy.prepare(`INSERT INTO subscriptions VALUES(1,?,'Legacy','monthly','其他服务',1000,'monthly',30,
+      '2026-02-28','2026-03-31',7,1,'private','#269979',1,0,'2026-01-31')`).run(id);
+    legacy.prepare(`INSERT INTO automatic_renewal_events(user_id,subscription_id,previous_start_date,previous_end_date,new_start_date,new_end_date,periods_advanced,created_at) VALUES(1,?,'2026-01-31','2026-02-28','2026-02-28','2026-03-31',1,1000)`).run(id);
+  } finally { legacy.close(); }
+  let db=openDatabase(filename);
+  try {
+    const row=db.prepare("SELECT * FROM subscription_renewal_logs").get()!;
+    assert.equal(row.amount_cents,null);assert.equal(row.subscription_id,id!);assert.equal(row.previous_end_date,"2026-02-28");
+    assert.equal(row.undo_until,null);assert.equal(row.created_at,1000);
+    db.close();db=openDatabase(filename);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM subscription_renewal_logs").get()?.n,1);
   } finally { db.close(); }
 });

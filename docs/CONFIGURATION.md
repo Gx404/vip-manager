@@ -17,9 +17,12 @@
 | HOST | 独立运行 127.0.0.1；容器 0.0.0.0 | API 监听地址 |
 | PORT | 3000 | API 内部端口 |
 | DATABASE_PATH | backend/data/memberships.sqlite | 独立 Node 模式的 SQLite 路径 |
-| TRUST_PROXY | 独立运行 false；Compose true | 是否信任一层受控反向代理 |
+| TRUST_PROXY | 独立运行 false；Compose true | 是否按可信地址解析完整反代链；不再使用固定跳数 |
+| TRUSTED_PROXY_RANGES | loopback,linklocal,uniquelocal | 逗号分隔的可信代理 IP/CIDR，默认适配回环与 Docker 私网；可收紧为实际代理地址/子网，拒绝 /0 |
 
 Compose 仅使用 compose.yaml 中列出的变量。容器的 API 端口和数据库路径由 Dockerfile 设置；高级修改需要同步健康检查、代理和数据卷。
+
+默认链路是公网客户端 → Caddy/受控入口 → 回环端口上的 Nginx → Docker 后端。入口必须清理客户端伪造的转发头，Nginx 用 `$proxy_add_x_forwarded_for` 保留入口传来的真实客户端并追加自己的直接来源。Express 从右向左检查，只越过可信代理。不要把所有公网网段加入信任，也不要把后端端口暴露公网。独立运行设置了公网来源却未开启 TRUST_PROXY 时会打印配置告警；识别到回环来源则警告并使用 30 秒短限流窗口，不会自行信任请求头。
 
 初次建库后，修改 .env 的管理员账号/密码不会覆盖已有账号。密码重置见维护文档。环境变量变化后运行 docker compose up -d 重新创建服务，单独 restart 不会应用新的容器环境。
 

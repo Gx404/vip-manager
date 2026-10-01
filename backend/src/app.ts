@@ -6,6 +6,9 @@ import { AuthService } from "./auth.ts";
 import { SubscriptionService } from "./subscriptions.ts";
 import { ApiError } from "./errors.ts";
 import type { Config } from "./config.ts";
+import { RenewalHistory } from "./renewal-history.ts";
+import { BackupService } from "./backups.ts";
+import { idSchema } from "./validation.ts";
 
 const cookieName = "membership_session";
 function tokenFromCookie(value: string | undefined): string {
@@ -19,9 +22,11 @@ export function createApp(db: DatabaseSync, config: Config) {
   const app = express();
   const auth = new AuthService(db, config);
   const subscriptions = new SubscriptionService(db, config.timeZone);
+  const history = new RenewalHistory(db);
+  const backups = new BackupService(db);
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
   app.disable("x-powered-by");
-  app.set("trust proxy", config.trustProxy ? 1 : false);
+  app.set("trust proxy", config.trustProxy ? config.trustedProxyRanges : false);
   app.use((req, res, next) => {
     res.locals.requestId = randomUUID();
     res.set({
@@ -50,7 +55,17 @@ export function createApp(db: DatabaseSync, config: Config) {
     }
     next();
   });
-  app.use(express.json({ limit: "20kb", strict: true }));
+  const smallJson = express.json({ limit: "20kb", strict: true });
+  // The schema still caps record counts; 20 MB permits a complete personal export with notes/history.
+  const backupJson = express.json({ limit: "20mb", strict: true });
+  app.use((req,res,next) => {
+    // Authenticate before buffering a potentially large private import request.
+    if (req.path === "/api/backup/import" || req.path === "/api/backup/preview") {
+      if (!auth.session(tokenFromCookie(req.get("Cookie")))) return next(new ApiError(401,"请先登录自己的管理员账号。","AUTH_REQUIRED"));
+      return backupJson(req,res,next);
+    }
+    return smallJson(req,res,next);
+  });
 
   app.get("/api/health", (_req,res) => {
     db.prepare("SELECT 1").get();
@@ -87,6 +102,19 @@ export function createApp(db: DatabaseSync, config: Config) {
   });
   app.get("/api/auth/session", (_req,res) => res.json({ user:res.locals.user }));
   app.get("/api/subscriptions", (_req,res) => res.json(subscriptions.list(res.locals.user.id)));
+  app.get("/api/subscriptions/history", (req,res) => {
+    const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);
+    res.json(history.list(res.locals.user.id,query.subscriptionId,query.offset,query.limit));
+  });
+  app.get("/api/backup", (_req,res) => {
+    res.set("Content-Disposition",'attachment; filename="vip-manager-backup.json"');
+    res.json(backups.export(res.locals.user.id));
+  });
+  app.post("/api/backup/preview", (req,res) => {
+    const input = z.object({ backup:z.unknown() }).strict().parse(req.body);
+    res.json(backups.preview(res.locals.user.id,input.backup));
+  });
+  app.post("/api/backup/import", (req,res) => res.json(backups.import(res.locals.user.id,req.body)));
   app.post("/api/subscriptions", (req,res) => {
     const result = subscriptions.execute(res.locals.user.id,req.body);
     res.status(req.body.action === "create" ? 201 : 200).json(result);
@@ -94,7 +122,7 @@ export function createApp(db: DatabaseSync, config: Config) {
   app.use((_req,_res,next) => next(new ApiError(404,"接口不存在。","NOT_FOUND")));
   const handleError: ErrorRequestHandler = (error,_req,res,_next) => {
     if (error instanceof ApiError) {
-      if (error.status === 429) res.set("Retry-After","900");
+      if (error.status === 429) res.set("Retry-After",String(error.retryAfterSeconds ?? 900));
       res.status(error.status).json({ error:error.message,code:error.code });
     } else if (error instanceof z.ZodError) {
       res.status(400).json({ error:"提交内容不正确：" + (error.issues[0]?.message ?? "请检查输入。"),code:"INVALID_INPUT" });

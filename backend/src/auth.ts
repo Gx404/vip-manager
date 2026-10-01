@@ -25,6 +25,12 @@ export async function verifyPassword(password: string, encoded: string): Promise
 export const digestToken = (token: string) => createHash("sha256").update(token).digest("hex");
 export type User = { id: number; username: string };
 
+/** Normalize IPv4-mapped peers so the same client cannot get separate IPv4/IPv6 buckets. */
+export function normalizeClientIp(ip: string): string { return ip.trim().toLowerCase().replace(/^::ffff:/, ""); }
+export function isLoopbackIp(ip: string): boolean { return ip === "::1" || /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(ip); }
+/** A username cannot lock every other account sharing its client/proxy address. */
+export function loginAttemptKey(ip: string, username: string): string { return digestToken(`${normalizeClientIp(ip)}:${username}`); }
+
 /** Bootstrap a single owner only on an empty database; environment changes never reset passwords. */
 export async function bootstrapAdmin(db: DatabaseSync, config: Config): Promise<void> {
   if (db.prepare("SELECT id FROM users LIMIT 1").get()) return;
@@ -33,26 +39,44 @@ export async function bootstrapAdmin(db: DatabaseSync, config: Config): Promise<
   db.prepare("INSERT INTO users (username,password_hash,created_at) VALUES (?,?,?)").run(config.adminUsername, hash, Date.now());
 }
 
-/** Persistent sessions and a persistent per-client login attempt limit. */
+/** Persistent composite login limits with bounded password work and short loopback recovery. */
 export class AuthService {
   private db: DatabaseSync;
   private config: Config;
-  constructor(db: DatabaseSync, config: Config) { this.db = db; this.config = config; }
+  private clock: () => number;
+  private pending = 0;
+  private warnedLoopback = false;
+  constructor(db: DatabaseSync, config: Config, clock: () => number = Date.now) { this.db = db; this.config = config; this.clock = clock; }
 
   async login(username: string, password: string, ip: string): Promise<{ token: string; user: User }> {
-    const now = Date.now();
-    const key = digestToken(ip);
+    const now = this.clock();
+    const loopback = isLoopbackIp(normalizeClientIp(ip));
+    const windowMs = loopback ? 30_000 : 900_000;
+    if (loopback && !this.warnedLoopback) {
+      this.warnedLoopback = true;
+      console.warn("登录来源为回环地址：使用 30 秒短限流窗口。若经过反向代理，请检查 TRUST_PROXY、可信代理网段和 X-Forwarded-For 传递；不会自动信任转发头。");
+    }
+    const key = loginAttemptKey(ip, username);
+    this.db.prepare("DELETE FROM login_attempts WHERE expires_at<=?").run(now);
     const limit = this.db.prepare("SELECT failures,expires_at FROM login_attempts WHERE key=?").get(key);
     if (limit && Number(limit.expires_at) > now && Number(limit.failures) >= 10) {
-      throw new ApiError(429, "尝试次数过多，请 15 分钟后再试。", "RATE_LIMITED");
+      const seconds = Math.max(1, Math.ceil((Number(limit.expires_at) - now) / 1000));
+      throw new ApiError(429, `尝试次数过多，请 ${seconds} 秒后再试。`, "RATE_LIMITED", seconds);
+    }
+    if (this.pending >= 2) throw new ApiError(429, "登录校验繁忙，请稍后重试。", "LOGIN_BUSY", 1);
+    if (!limit && Number(this.db.prepare("SELECT count(*) AS count FROM login_attempts").get()?.count) >= 10_000) {
+      throw new ApiError(429, "登录请求较多，请稍后重试。", "LOGIN_BUSY", 30);
     }
     // Reserve an attempt before awaiting scrypt, so parallel requests cannot bypass the limit.
     this.db.prepare(`INSERT INTO login_attempts(key,failures,expires_at) VALUES(?,1,?)
       ON CONFLICT(key) DO UPDATE SET failures=CASE WHEN expires_at<=? THEN 1 ELSE failures+1 END,
       expires_at=CASE WHEN expires_at<=? THEN excluded.expires_at ELSE expires_at END`)
-      .run(key, now + 900_000, now, now);
+      .run(key, now + windowMs, now, now);
     const owner = this.db.prepare("SELECT id,username,password_hash FROM users ORDER BY id LIMIT 1").get();
-    const verified = owner ? await verifyPassword(password, String(owner.password_hash)) : false;
+    this.pending++;
+    let verified: boolean;
+    try { verified = owner ? await verifyPassword(password, String(owner.password_hash)) : false; }
+    finally { this.pending--; }
     if (!owner || String(owner.username) !== username || !verified) throw new ApiError(401, "账号或密码不正确。", "INVALID_CREDENTIALS");
     const token = randomBytes(32).toString("base64url");
     transaction(this.db, () => {

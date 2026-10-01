@@ -1,4 +1,4 @@
-import { readConfig } from "./config.ts";
+import { readConfig, configurationWarnings } from "./config.ts";
 import { openDatabase } from "./database.ts";
 import { bootstrapAdmin } from "./auth.ts";
 import { createApp } from "./app.ts";
@@ -10,6 +10,7 @@ let db: DatabaseSync | undefined;
 let stopRenewals: (() => void) | undefined;
 try {
   const config = readConfig();
+  for (const warning of configurationWarnings(config)) console.warn(warning);
   db = openDatabase(config.databasePath);
   await bootstrapAdmin(db,config);
   stopRenewals = startRenewalScheduler(new SubscriptionService(db,config.timeZone));

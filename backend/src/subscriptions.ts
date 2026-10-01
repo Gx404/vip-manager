@@ -5,9 +5,11 @@ import { automaticPeriod, billingAnchor, dateInTimeZone } from "../../shared/bil
 import { actionSchema, dateSchema, subscriptionSchema } from "./validation.ts";
 import { ApiError } from "./errors.ts";
 import { transaction } from "./database.ts";
+import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
+import type { RenewalLog } from "../../shared/renewals.ts";
 
 type Row = Record<string, unknown>;
-function fromRow(row: Row): Subscription {
+export function subscriptionFromRow(row: Row): Subscription {
   return {
     id: String(row.id), name: String(row.name), plan: String(row.plan), category: String(row.category),
     amount: Number(row.amount_cents) / 100, cycle: row.cycle as Subscription["cycle"], customDays: Number(row.custom_days),
@@ -24,12 +26,16 @@ function values(item: Subscription): SQLInputValue[] {
 export class SubscriptionService {
   private db: DatabaseSync;
   private timeZone: string;
-  constructor(db: DatabaseSync, timeZone: string) { this.db=db; this.timeZone=timeZone; }
+  private history: RenewalHistory;
+  private clock: () => Date;
+  constructor(db: DatabaseSync, timeZone: string, clock: () => Date = () => new Date()) {
+    this.db=db; this.timeZone=timeZone; this.history=new RenewalHistory(db); this.clock=clock;
+  }
 
   list(owner: number) {
     const rows = this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY end_date,id").all(owner);
     const preference = this.db.prepare("SELECT initialized FROM subscription_preferences WHERE user_id=?").get(owner);
-    return { items: rows.map(fromRow), initialized: Boolean(preference?.initialized) || rows.length > 0 };
+    return { items: rows.map(subscriptionFromRow), initialized: Boolean(preference?.initialized) || rows.length > 0 };
   }
 
   /** Read only the single administrator's display fields; never select private notes or real versions. */
@@ -37,7 +43,7 @@ export class SubscriptionService {
     const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,cycle,custom_days,start_date,end_date,
       reminder_days,auto_renew,color,'' AS note,0 AS version FROM subscriptions
       WHERE user_id=(SELECT id FROM users ORDER BY id LIMIT 1) ORDER BY end_date,id`).all();
-    return rows.map(fromRow);
+    return rows.map(subscriptionFromRow);
   }
 
   /** Atomically catch up enabled records at their due date, keeping one audit event per changed record. */
@@ -47,7 +53,7 @@ export class SubscriptionService {
       const rows = this.db.prepare("SELECT * FROM subscriptions WHERE auto_renew=1 AND end_date<=? ORDER BY user_id,id").all(today);
       let changed = 0;
       for (const row of rows) {
-        const item = fromRow(row);
+        const item = subscriptionFromRow(row);
         const anchor = String(row.renewal_anchor_date) || billingAnchor(item);
         const next = automaticPeriod(item, anchor, today);
         if (!next) continue;
@@ -60,13 +66,14 @@ export class SubscriptionService {
         this.db.prepare(`INSERT INTO automatic_renewal_events(user_id,subscription_id,previous_start_date,previous_end_date,
           new_start_date,new_end_date,periods_advanced,created_at) VALUES(?,?,?,?,?,?,?,?)`)
           .run(Number(row.user_id),item.id,item.startDate,item.endDate,next.startDate,next.endDate,next.periods,now.getTime());
+        this.history.record(Number(row.user_id),item,this.get(Number(row.user_id),item.id),anchor,anchor,"automatic",next.periods,now.getTime());
         changed++;
       }
       return changed;
     });
   }
 
-  execute(owner: number, body: unknown): { item?: Subscription; id?: string; initialized?: boolean } {
+  execute(owner: number, body: unknown): { item?: Subscription; id?: string; initialized?: boolean; renewal?: RenewalLog; undoUntil?: string | null } {
     const input = actionSchema.parse(body);
     if (input.action === "initialize") {
       this.initialize(owner);
@@ -90,8 +97,34 @@ export class SubscriptionService {
     if (!input.id || input.version === undefined) throw new ApiError(400,"缺少记录标识或版本。");
     return transaction(this.db, () => {
       const item = this.get(owner,input.id!);
+      if (input.action === "renew" && input.requestId) {
+        const previous = this.history.byRequest(owner,input.requestId);
+        if (previous) {
+          if (previous.subscription_id !== item.id || previous.undone_at !== null || Number(previous.resulting_version) !== item.version) {
+            throw new ApiError(409,"该续费请求已处理且记录后来发生变化，请刷新。","VERSION_CONFLICT");
+          }
+          return { item, renewal: renewalFromRow(previous), undoUntil: previous.undo_until === null ? null : new Date(Number(previous.undo_until)).toISOString() };
+        }
+      }
       if (item.version !== input.version) throw new ApiError(409,"记录已在其他页面修改，请刷新后再试。","VERSION_CONFLICT");
+      if (input.action === "undoRenew") {
+        if (!input.logId) throw new ApiError(400,"缺少续费流水标识。");
+        const log = this.history.get(owner,input.logId);
+        const now = this.clock().getTime();
+        if (log.kind !== "manual" || log.subscription_id !== item.id || log.undone_at !== null || log.undo_until === null || Number(log.undo_until) <= now) {
+          throw new ApiError(409,"这次续费已撤销或超过 30 秒撤销期限。","UNDO_UNAVAILABLE");
+        }
+        if (Number(log.resulting_version) !== item.version || item.startDate !== log.new_start_date || item.endDate !== log.new_end_date) {
+          throw new ApiError(409,"订阅已有后续修改，不能覆盖，请检查流水后手动调整。","VERSION_CONFLICT");
+        }
+        this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
+          .run(String(log.previous_start_date),String(log.previous_end_date),String(log.previous_anchor_date),now,owner,item.id,item.version);
+        this.db.prepare("UPDATE subscription_renewal_logs SET undone_at=?,undo_until=NULL WHERE user_id=? AND id=?").run(now,owner,input.logId);
+        return { item: this.get(owner,item.id), renewal: renewalFromRow(this.history.get(owner,input.logId)), undoUntil: null };
+      }
       if (input.action === "delete") {
+        // Keep the ledger, but never let an old receipt undo a future record reusing this UUID.
+        this.db.prepare("UPDATE subscription_renewal_logs SET undo_until=NULL,resulting_version=NULL WHERE user_id=? AND subscription_id=?").run(owner,item.id);
         this.db.prepare("DELETE FROM subscriptions WHERE user_id=? AND id=? AND version=?").run(owner,item.id,item.version);
         return { id: item.id };
       }
@@ -103,14 +136,19 @@ export class SubscriptionService {
           end_date=?,reminder_days=?,auto_renew=?,note=?,color=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?`)
           .run(...values(changed),Date.now(),owner,item.id,item.version);
         if (scheduleChanged) this.db.prepare("UPDATE subscriptions SET renewal_anchor_date=? WHERE user_id=? AND id=?").run(billingAnchor(changed),owner,item.id);
-      } else {
-        const today = dateInTimeZone(new Date(), this.timeZone);
+      } else if (input.action === "renew") {
+        const now = this.clock();
+        const today = dateInTimeZone(now, this.timeZone);
         const base = item.endDate > today ? item.endDate : today;
         const savedAnchor = String(this.db.prepare("SELECT renewal_anchor_date FROM subscriptions WHERE user_id=? AND id=?").get(owner,item.id)?.renewal_anchor_date ?? "") || billingAnchor(item);
         const anchor = item.endDate >= today ? savedAnchor : base;
         const end = dateSchema.parse(item.endDate >= today ? automaticPeriod(item,anchor,base)!.endDate : renewDate(base,item.cycle,item.customDays));
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
-          .run(base,end,anchor,Date.now(),owner,item.id,item.version);
+          .run(base,end,anchor,now.getTime(),owner,item.id,item.version);
+        const updated = this.get(owner,item.id);
+        const renewal = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
+        const log = this.history.get(owner,renewal.id);
+        return { item: updated, renewal, undoUntil: new Date(Number(log.undo_until)).toISOString() };
       }
       return { item: this.get(owner,item.id) };
     });
@@ -123,6 +161,6 @@ export class SubscriptionService {
   private get(owner: number, id: string): Subscription {
     const row = this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? AND id=?").get(owner,id);
     if (!row) throw new ApiError(404,"记录不存在或已删除。","NOT_FOUND");
-    return fromRow(row);
+    return subscriptionFromRow(row);
   }
 }

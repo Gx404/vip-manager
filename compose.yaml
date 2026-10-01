@@ -14,6 +14,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
       TRUST_PROXY: "true"
+      TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:-loopback,linklocal,uniquelocal}
     volumes:
       - membership_data:/app/backend/data
     expose:

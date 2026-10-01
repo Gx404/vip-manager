@@ -2,9 +2,11 @@
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, message: string, code = "REQUEST_FAILED") {
+  retryAfterSeconds?: number;
+  constructor(status: number, message: string, code = "REQUEST_FAILED", retryAfterSeconds?: number) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }

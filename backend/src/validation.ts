@@ -7,7 +7,7 @@ export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value =
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value;
 }, "请选择有效日期（1900–2200 年）。");
 export const idSchema = z.string().uuid("记录标识不正确。");
-export const subscriptionSchema = z.object({
+export const subscriptionObject = z.object({
   id: idSchema,
   name: z.string().trim().min(1,"请填写会员名称。").max(60),
   plan: z.string().trim().max(80),
@@ -21,11 +21,15 @@ export const subscriptionSchema = z.object({
   autoRenew: z.boolean(),
   note: z.string().trim().max(500),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  version: z.number().int().nonnegative().optional(),
-}).strict().refine(item => item.endDate > item.startDate, "到期日期必须晚于开始日期。");
+  version: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1).optional(),
+}).strict();
+export const validPeriod = (item: { startDate: string; endDate: string }) => item.endDate > item.startDate;
+export const subscriptionSchema = subscriptionObject.refine(validPeriod, "到期日期必须晚于开始日期。");
 export const actionSchema = z.object({
-  action: z.enum(["create","update","delete","renew","initialize"]),
+  action: z.enum(["create","update","delete","renew","undoRenew","initialize"]),
   id: idSchema.optional(),
   version: z.number().int().nonnegative().optional(),
   item: z.unknown().optional(),
+  requestId: idSchema.optional(),
+  logId: idSchema.optional(),
 }).strict();

@@ -2,6 +2,7 @@ export type Brand = { key: string; label: string; icon: string; aliases: readonl
 
 /** Curated local assets only. Never turn a user-supplied name into a URL or external lookup. */
 export const brands: readonly Brand[] = [
+  { key: "icloud", label: "iCloud", icon: "/brands/icloud.svg", aliases: ["icloud", "苹果云盘"] },
   { key: "baidu-netdisk", label: "百度网盘", icon: "/brands/baidu-netdisk.png", aliases: ["百度网盘", "百度云盘", "百度云", "baidunetdisk", "baidupan"] },
   { key: "openai", label: "OpenAI / ChatGPT", icon: "/brands/openai.svg", aliases: ["openai", "chatgpt", "gptplus", "gptpro", "gpt"] },
   { key: "claude", label: "Claude", icon: "/brands/claude.svg", aliases: ["claude", "anthropic"] },

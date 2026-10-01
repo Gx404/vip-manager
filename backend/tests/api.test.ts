@@ -32,7 +32,7 @@ before(async()=>{
 after(async()=>{
   if(server)await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
   db?.close();
-  if(directory)await rm(directory,{recursive:true,force:true});
+  if(directory)await rm(directory,{recursive:true,force:true,maxRetries:3,retryDelay:100});
 });
 const post=(path:string,body:unknown,extra:Record<string,string>={})=>fetch(url+path,{method:"POST",headers:{...headers,...(cookie?{Cookie:cookie}:{}),...extra},body:JSON.stringify(body)});
 

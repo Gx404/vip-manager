@@ -11,7 +11,7 @@ export function openDatabase(filename: string): DatabaseSync {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     const version = Number(db.prepare("PRAGMA user_version").get()?.user_version);
-    const migrations = ["001_initial.sql", "002_automatic_renewals.sql"];
+    const migrations = ["001_initial.sql", "002_automatic_renewals.sql", "003_subscription_history.sql"];
     if (version > migrations.length) throw new Error("数据库版本高于当前程序，请勿降级运行。");
     for (let index = version; index < migrations.length; index++) {
       const sql = readFileSync(new URL("../migrations/" + migrations[index], import.meta.url), "utf8");

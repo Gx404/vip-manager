@@ -14,6 +14,7 @@
 | 淘宝 / 88VIP | 淘宝、88VIP、Taobao | [Simple Icons Taobao SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/taobao.svg) |
 | 网易云音乐 | 网易云音乐、网易云黑胶、网易云、NeteaseMusic、CloudMusic | [Simple Icons NetEase Cloud Music SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/neteasecloudmusic.svg) |
 | 哔哩哔哩 | 哔哩哔哩、Bilibili、B站 | [Simple Icons Bilibili SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/bilibili.svg) |
+| iCloud | iCloud、iCloud+、苹果云盘 | [Simple Icons iCloud SVG](https://github.com/simple-icons/simple-icons/blob/develop/icons/icloud.svg)，本地填色 #4f8ee8 |
 
 资源核对日期：2026-09-30。百度网盘使用其官网引用的原始 PNG，其他匹配品牌使用 SVG；不再放大 32×32 favicon，也不把通用百度标志当成网盘标志。统一 44px 图标区域与 36px 图像尺寸，不添加第二层边框或阴影，保留品牌图形原本比例。只根据名称展示品牌标识，不验证服务商账户、订阅真伪或付款状态，也不自动读取第三方网站数据。
 
