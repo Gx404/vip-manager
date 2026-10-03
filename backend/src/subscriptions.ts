@@ -12,14 +12,19 @@ type Row = Record<string, unknown>;
 export function subscriptionFromRow(row: Row): Subscription {
   return {
     id: String(row.id), name: String(row.name), plan: String(row.plan), category: String(row.category),
-    amount: Number(row.amount_cents) / 100, cycle: row.cycle as Subscription["cycle"], customDays: Number(row.custom_days),
+    amount: Number(row.original_amount_cents) / 100, cycle: row.cycle as Subscription["cycle"], customDays: Number(row.custom_days),
     startDate: String(row.start_date), endDate: String(row.end_date), reminderDays: Number(row.reminder_days),
     autoRenew: Boolean(row.auto_renew), note: String(row.note), color: String(row.color), version: Number(row.version),
+    currency: String(row.currency || "CNY") as Subscription["currency"],
+    purchaseDate: String(row.purchase_date || row.start_date),
+    fxRateToCny: Number(row.fx_rate_to_cny || 1),
+    fxRateDate: String(row.fx_rate_date || row.purchase_date || row.start_date),
+    fxRateSource: String(row.fx_rate_source || "manual") as Subscription["fxRateSource"],
   };
 }
 function values(item: Subscription): SQLInputValue[] {
-  return [item.name,item.plan,item.category,Math.round(item.amount*100),item.cycle,item.customDays,item.startDate,
-    item.endDate,item.reminderDays,Number(item.autoRenew),item.note,item.color];
+  return [item.name,item.plan,item.category,Math.round(item.amount*(item.fxRateToCny ?? 1)*100),item.cycle,item.customDays,item.startDate,
+    item.endDate,item.reminderDays,Number(item.autoRenew),item.note,item.color,item.currency ?? "CNY",item.purchaseDate ?? item.startDate,item.fxRateToCny ?? 1,item.fxRateDate ?? item.purchaseDate ?? item.startDate,item.fxRateSource ?? "manual",Math.round(item.amount*100)];
 }
 
 /** User-scoped storage and authoritative renewals; UI and server share date arithmetic. */
@@ -40,8 +45,8 @@ export class SubscriptionService {
 
   /** Read only the single administrator's display fields; never select private notes or real versions. */
   listPublic(): Subscription[] {
-    const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,cycle,custom_days,start_date,end_date,
-      reminder_days,auto_renew,color,'' AS note,0 AS version FROM subscriptions
+    const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,original_amount_cents,cycle,custom_days,start_date,end_date,
+      reminder_days,auto_renew,color,'' AS note,0 AS version,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source FROM subscriptions
       WHERE user_id=(SELECT id FROM users ORDER BY id LIMIT 1) ORDER BY end_date,id`).all();
     return rows.map(subscriptionFromRow);
   }
@@ -88,7 +93,7 @@ export class SubscriptionService {
           throw new ApiError(409,"这条记录已经存在，请刷新确认，避免重复保存。");
         }
         this.db.prepare(`INSERT INTO subscriptions(user_id,id,name,plan,category,amount_cents,cycle,custom_days,start_date,end_date,
-          reminder_days,auto_renew,note,color,version,updated_at,renewal_anchor_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`)
+          reminder_days,auto_renew,note,color,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,original_amount_cents,version,updated_at,renewal_anchor_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`)
           .run(owner,item.id,...values(item),Date.now(),billingAnchor(item));
         this.initialize(owner);
         return { item: this.get(owner,item.id) };
@@ -133,7 +138,7 @@ export class SubscriptionService {
         if (changed.id !== item.id) throw new ApiError(400,"记录标识不一致。");
         const scheduleChanged = changed.startDate !== item.startDate || changed.endDate !== item.endDate || changed.cycle !== item.cycle || changed.customDays !== item.customDays;
         this.db.prepare(`UPDATE subscriptions SET name=?,plan=?,category=?,amount_cents=?,cycle=?,custom_days=?,start_date=?,
-          end_date=?,reminder_days=?,auto_renew=?,note=?,color=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?`)
+          end_date=?,reminder_days=?,auto_renew=?,note=?,color=?,currency=?,purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,original_amount_cents=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?`)
           .run(...values(changed),Date.now(),owner,item.id,item.version);
         if (scheduleChanged) this.db.prepare("UPDATE subscriptions SET renewal_anchor_date=? WHERE user_id=? AND id=?").run(billingAnchor(changed),owner,item.id);
       } else if (input.action === "renew") {

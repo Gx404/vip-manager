@@ -11,6 +11,10 @@ export function renewalFromRow(row: Row): RenewalLog {
     id: String(row.id), subscriptionId: String(row.subscription_id), subscriptionName: String(row.subscription_name),
     kind: row.kind as RenewalLog["kind"], previousStartDate: String(row.previous_start_date), previousEndDate: String(row.previous_end_date),
     newStartDate: String(row.new_start_date), newEndDate: String(row.new_end_date), amount: row.amount_cents === null ? null : Number(row.amount_cents) / 100,
+    currency: String(row.currency || "CNY") as RenewalLog["currency"],
+    purchaseDate: String(row.purchase_date || row.previous_start_date), fxRateToCny: Number(row.fx_rate_to_cny || 1),
+    fxRateDate: String(row.fx_rate_date || row.purchase_date || row.previous_start_date),
+    fxRateSource: String(row.fx_rate_source || "manual") as RenewalLog["fxRateSource"],
     periods: Number(row.periods), createdAt: new Date(Number(row.created_at)).toISOString(),
     undoneAt: row.undone_at === null ? null : new Date(Number(row.undone_at)).toISOString(),
   };
@@ -26,9 +30,9 @@ export class RenewalHistory {
     const id = randomUUID();
     this.db.prepare(`INSERT INTO subscription_renewal_logs(user_id,id,subscription_id,subscription_name,kind,
       previous_start_date,previous_end_date,new_start_date,new_end_date,previous_anchor_date,new_anchor_date,
-      amount_cents,periods,created_at,resulting_version,undo_until,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      amount_cents,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,periods,created_at,resulting_version,undo_until,request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(owner,id,previous.id,previous.name,kind,previous.startDate,previous.endDate,next.startDate,next.endDate,
-        previousAnchor,newAnchor,Math.round(previous.amount * 100) * periods,periods,now,next.version,
+        previousAnchor,newAnchor,Math.round(previous.amount * 100) * periods,previous.currency ?? "CNY",previous.purchaseDate ?? previous.startDate,previous.fxRateToCny ?? 1,previous.fxRateDate ?? previous.purchaseDate ?? previous.startDate,previous.fxRateSource ?? "manual",periods,now,next.version,
         kind === "manual" ? now + UNDO_RENEWAL_MS : null,requestId);
     return renewalFromRow(this.get(owner, id));
   }

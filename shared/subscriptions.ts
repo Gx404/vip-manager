@@ -1,7 +1,8 @@
 /** Shared subscription data and timezone-safe date-only arithmetic. */
+import { amountInCny, type CurrencySnapshot } from "./currency.ts";
 export const categories = ["影音娱乐", "购物会员", "AI 工具", "云盘存储", "效率办公", "生活服务", "游戏会员", "学习教育", "网络服务", "其他服务"] as const;
 export const cycles = { monthly: "月付", quarterly: "季付", yearly: "年付", custom: "自定义" } as const;
-export type Subscription = {
+export type Subscription = CurrencySnapshot & {
   id: string; name: string; plan: string; category: string; amount: number;
   cycle: keyof typeof cycles; customDays: number; startDate: string; endDate: string;
   reminderDays: number; autoRenew: boolean; note: string; color: string; version: number;
@@ -20,6 +21,10 @@ export function stateOf(item: Subscription, today: string) {
 }
 export function monthlyCost(item: Subscription): number {
   return item.amount / (item.cycle === "yearly" ? 12 : item.cycle === "quarterly" ? 3 : item.cycle === "custom" ? item.customDays / 30 : 1);
+}
+/** Monthly cost converted to the dashboard base currency using the locked rate. */
+export function monthlyCostCny(item: Subscription): number {
+  return amountInCny(monthlyCost(item), item.fxRateToCny);
 }
 /** Add a billing cycle with month-end clamping. */
 export function renewDate(base: string, cycle: Subscription["cycle"], days: number): string {

@@ -61,7 +61,7 @@
 .row-date{text-align:right;white-space:nowrap;min-width:100px;font-variant-numeric:tabular-nums}
 .row-date b{font-size:.875rem;font-weight:550}
 .row-date time{display:block;font-size:.75rem;color:#87968d;margin-top:3px}
-.row-actions{min-width:68px;justify-content:flex-end;margin-left:0}
+.row-actions{min-width:32px;justify-content:flex-end;margin-left:0}
 .template-picker{display:grid;gap:8px;margin:4px 0 15px;padding:11px 12px;border:1px solid #e3eee8;border-radius:9px;background:#f7faf8;color:#617a6b;font-size:.8rem}
 .template-picker>div{display:flex;flex-wrap:wrap;gap:6px}
 .template-chip{border:1px solid #d5e6dc;background:#fff;color:#438269;border-radius:6px;padding:5px 8px;font-size:.75rem}
@@ -103,6 +103,65 @@
   .row-date{min-width:72px}
   .row-date b{font-size:.75rem}
   .row-date time{font-size:.625rem}
-  .row-actions{min-width:64px;gap:0}
+  .row-actions{min-width:32px;gap:0}
   .membership-dialog{width:calc(100% - 24px)!important;padding:20px!important}
+}
+
+/* Keep the overview deliberately small; detailed budgets live on their own page. */
+.overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fx-fields{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;background:#f5f8f6;padding:12px;border-radius:10px;grid-column:1/-1;min-width:0}
+.form-help{grid-column:1/-1;font-size:.75rem;line-height:1.65;color:#738579;margin:0}
+.form-help span{display:block;color:#37795a}
+.form-help.red{color:#b64848}
+.renewal-action{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid #dce8e1;border-radius:10px;padding:13px;margin-top:16px}
+.renewal-action strong{font-size:.83rem}
+.renewal-action small{display:block;font-size:.75rem;color:#788a7d;margin-top:4px}
+.renewal-action button{flex-shrink:0}
+.report-page{margin-top:24px;min-width:0}
+.report-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}
+.report-heading .button{flex-shrink:0;white-space:nowrap}
+.report-heading p{font-size:.625rem;letter-spacing:.14em;color:#6c9782;margin:0 0 6px}
+.report-heading h2{font-size:1.35rem;font-weight:650;margin:0 0 6px}
+.report-heading span{font-size:.82rem;color:#85938c}
+.report-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:18px}
+.report-kpis>div,.report-section{background:#fff;border:1px solid #e6ece8;border-radius:14px;padding:22px;min-width:0}
+.report-kpis span,.report-section h3{display:flex;align-items:center;gap:7px;color:#708477;font-size:.8rem;font-weight:500}
+.report-kpis strong{display:block;font-size:1.8rem;letter-spacing:-.04em;margin:10px 0 5px;overflow-wrap:anywhere}
+.report-kpis em{font-size:.8rem;font-style:normal;color:#9aa79e;margin-left:7px}
+.report-kpis small{color:#89968e;font-size:.75rem}
+.report-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:18px}
+.report-section h3{font-size:.9rem;color:#344d3f;margin:0 0 20px}
+.report-bars{display:grid;gap:20px}
+.report-bar-row{display:grid;grid-template-columns:105px minmax(0,1fr) auto;gap:14px;align-items:center;font-size:.8rem}
+.report-bar-row>span small,.report-list small{display:block;color:#8b9a90;font-size:.72rem;font-weight:400;margin-top:3px}
+.report-bar-row>div{height:8px;border-radius:10px;background:#f0f4f1;overflow:hidden}
+.report-bar-row i{display:block;height:100%;border-radius:10px}
+.report-bar-row b{font-weight:550;text-align:right}
+.report-bar-row b small{font-size:.65rem;color:#8b9a90;margin-left:3px;font-weight:400}
+.report-list{list-style:none;margin:0;padding:0}
+.report-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #f0f3f1;font-size:.8rem}
+.report-list li:last-child{border-bottom:0}
+.report-list li>span{min-width:0;overflow-wrap:anywhere}
+.report-list b{text-align:right;flex-shrink:0;font-weight:550}
+.report-list strong{font-weight:500}
+.report-ranked{display:flex;align-items:center;gap:9px}
+.report-ranked em{font-style:normal;color:#9eada3;width:10px}
+.report-ranked .service-logo{width:28px;height:28px;flex-shrink:0}
+.report-ranked .service-logo img{width:26px;height:26px}
+.report-modes{display:grid;gap:8px;border-top:1px solid #e6ece8;padding-top:12px;font-size:.72rem;color:#788f7d}
+.report-modes b{float:right;font-weight:500}
+.report-fx{display:grid;gap:10px}
+.report-fx>div{display:flex;align-items:baseline;gap:10px 22px;flex-wrap:wrap;border-bottom:1px solid #edf1ee;padding-bottom:10px;font-size:.8rem}
+.report-fx strong{min-width:130px;font-weight:500}
+.report-fx small,.report-fx span{color:#7b8e81}
+.report-note{font-size:.75rem;color:#8b978f;line-height:1.9;padding:6px 4px;overflow-wrap:anywhere}
+@media(max-width:900px){.report-columns{grid-template-columns:1fr}.report-kpis{gap:10px}.report-kpis>div{padding:16px}.report-kpis strong{font-size:1.4rem}}
+@media(max-width:590px){
+  .fx-fields{grid-template-columns:1fr}.fx-fields .button{justify-self:start}
+  .renewal-action{align-items:flex-start;flex-direction:column}
+  .report-heading h2{font-size:1.1rem}.report-heading .button{font-size:.75rem}
+  .report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-kpis>div:first-child{grid-column:1/-1}.report-kpis strong{font-size:1.45rem}
+  .report-section{padding:16px}.report-bar-row{grid-template-columns:80px minmax(0,1fr) auto;gap:8px}
+  .report-ranked .service-logo{display:none}.report-fx>div{align-items:flex-start;flex-direction:column;gap:5px}
 }

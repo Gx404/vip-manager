@@ -19,7 +19,9 @@ test("private history and JSON API validate auth, large imports, optimistic revi
   const session=await new AuthService(db,config).login("admin",config.adminPassword!,"198.51.100.8");
   const headers={Cookie:`membership_session=${session.token}`,Origin:config.publicOrigin,"Content-Type":"application/json","X-Requested-With":"membership-dashboard"};
   const post=(path:string,body:unknown)=>fetch(url+path,{method:"POST",headers,body:JSON.stringify(body)});
-  for(const path of ["/backup","/subscriptions/history"])assert.equal((await fetch(url+path)).status,401);
+  for(const path of ["/backup","/subscriptions/history","/exchange-rate?currency=USD&date=2024-01-01"])assert.equal((await fetch(url+path)).status,401);
+  assert.equal((await fetch(url+"/exchange-rate?currency=CNY&date=2024-01-01",{headers})).status,200);
+  assert.equal((await fetch(url+"/exchange-rate?currency=INVALID&date=2024-01-01",{headers})).status,400);
   for(const path of ["/backup/preview","/backup/import"]){
     assert.equal((await fetch(url+path,{method:"POST",headers:{...headers,Cookie:""},body:JSON.stringify({data:"x".repeat(40_000)})})).status,401);
     assert.equal((await fetch(url+path,{method:"POST",headers:{...headers,"X-Requested-With":""},body:"{}"})).status,403);

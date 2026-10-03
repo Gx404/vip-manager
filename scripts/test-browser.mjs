@@ -21,7 +21,7 @@ try {
   await bootstrapAdmin(db,config);
   const service=new SubscriptionService(db,config.timeZone), today=dateKey();
   const names=["ChatGPT Plus","百度网盘","淘宝88VIP","哔哩哔哩大会员","iCloud+","自定义测试"];
-  for (const [index,name] of names.entries()) service.execute(1,{action:"create",item:{id:randomUUID(),name,plan:"测试套餐",category:["AI 工具","云盘存储","购物会员","影音娱乐","云盘存储","其他服务"][index],amount:20+index,cycle:"monthly",customDays:30,startDate:shiftDate(today,-20),endDate:shiftDate(today,2+index),reminderDays:7,autoRenew:index===4,note:"isolated browser fixture",color:"#269979",version:0}});
+  for (const [index,name] of names.entries()) service.execute(1,{action:"create",item:{id:randomUUID(),name,plan:"测试套餐",category:["AI 工具","云盘存储","购物会员","影音娱乐","云盘存储","其他服务"][index],amount:20+index,cycle:"monthly",customDays:30,startDate:shiftDate(today,-20),endDate:shiftDate(today,2+index),reminderDays:7,autoRenew:index===4,note:"isolated browser fixture",color:"#269979",version:0,...(index===0?{currency:"USD",purchaseDate:"2024-05-05",fxRateToCny:7.2352,fxRateDate:"2024-05-03",fxRateSource:"frankfurter"}:{})}});
   const api=createApp(db,config), web=express();
   web.use((req,res,next)=>req.path.startsWith("/api/")?api(req,res,next):next());
   web.use(express.static(fileURLToPath(new URL("../frontend/dist/",import.meta.url))));
@@ -38,9 +38,13 @@ try {
   await page.goto(config.publicOrigin);
   await page.getByRole("heading",{name:"ChatGPT Plus",exact:true}).waitFor();
   assert.equal(await page.locator(".subscription-card").count(),6);
+  assert.equal(await page.locator(".overview .summary-card").count(),2);
+  assert.equal(await page.locator(".subscription-grid .quick-renew").count(),0);
+  assert.equal(await page.getByRole("button",{name:/快捷续费/}).count(),0);
   await page.getByRole("button",{name:"添加订阅",exact:true}).click();
   await page.getByLabel("本期开始日期").fill("2026-01-31");
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2026-02-28");
+  assert.equal(await page.getByLabel("购买日期（汇率基准）").inputValue(),"2026-01-31");
   await page.getByLabel("续费周期",{exact:true}).selectOption("quarterly");
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2026-04-30");
   await page.getByLabel("本期到期日期").fill("2026-05-12");
@@ -51,16 +55,40 @@ try {
   assert.equal(await page.getByLabel("续费周期",{exact:true}).inputValue(),"yearly");
   await page.getByRole("button",{name:"重新按开始日期和周期计算"}).click();
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2027-02-01");
+  await page.getByLabel("付款币种").selectOption("USD");
+  assert.equal(await page.getByLabel(/购买时汇率/).inputValue(),"");
+  await page.getByLabel("购买日期（汇率基准）").fill("2024-05-05");
+  await page.getByLabel("本期开始日期").fill("2026-03-01");
+  assert.equal(await page.getByLabel("购买日期（汇率基准）").inputValue(),"2024-05-05");
+  await page.route("**/api/exchange-rate?**",async route=>{
+    const query=new URL(route.request().url()).searchParams;
+    assert.equal(query.get("date"),"2024-05-05");
+    await route.fulfill({json:{currency:"USD",requestedDate:"2024-05-05",rateDate:"2024-05-03",rate:7.2352,source:"frankfurter"}});
+  });
+  await page.getByRole("button",{name:"查询购买日汇率"}).click();
+  await page.getByText(/Frankfurter 历史参考/).waitFor();
+  assert.equal(await page.getByLabel(/购买时汇率/).inputValue(),"7.2352");
+  await page.getByLabel(/购买时汇率/).fill("7.1");
+  await page.getByLabel("续费周期",{exact:true}).selectOption("monthly");
+  assert.equal(await page.getByLabel(/购买时汇率/).inputValue(),"7.1");
   await page.getByRole("button",{name:"取消",exact:true}).click();
+  await page.unroute("**/api/exchange-rate?**");
   console.log("PASS date linking, manual override, template defaults and explicit reset");
 
   const original=(await records()).find(item=>item.name==="ChatGPT Plus");
-  await page.getByRole("button",{name:"快捷续费ChatGPT Plus",exact:true}).click();
+  await page.getByRole("button",{name:"编辑ChatGPT Plus",exact:true}).click();
+  assert.equal(await page.getByLabel("购买日期（汇率基准）").inputValue(),"2024-05-05");
+  await page.getByLabel("套餐名称").fill("unsaved");
+  assert.equal(await page.getByRole("button",{name:"快捷续费",exact:true}).isDisabled(),true);
+  await page.getByLabel("套餐名称").fill("测试套餐");
+  await page.getByRole("button",{name:"快捷续费",exact:true}).click();
   await page.getByRole("button",{name:"撤销",exact:true}).click();
   await page.getByText("已撤销本次续费记录",{exact:true}).waitFor();
   assert.equal((await records()).find(item=>item.id===original.id).endDate,original.endDate);
   await page.getByRole("button",{name:/提醒中心/}).click();
-  await page.getByRole("dialog").getByRole("button",{name:"快捷续费百度网盘",exact:true}).click();
+  assert.equal(await page.getByRole("dialog").getByRole("button",{name:/快捷续费/}).count(),0);
+  await page.getByRole("button",{name:"管理百度网盘",exact:true}).click();
+  await page.getByRole("button",{name:"快捷续费",exact:true}).click();
   await page.getByRole("button",{name:"撤销",exact:true}).click();
   const history=await (await context.request.get(config.publicOrigin+"/api/subscriptions/history")).json();
   // Wait for the second undo request to complete before checking the retained ledger.
@@ -69,13 +97,15 @@ try {
   await page.getByRole("dialog").getByText("已撤销",{exact:true}).first().waitFor();
   assert.equal(history.total,2);
   await page.keyboard.press("Escape");
-  console.log("PASS card/reminder quick renewal, toast undo and retained history");
+  console.log("PASS detail-only renewal, dirty-form guard, toast undo and frozen foreign ledger");
 
   await page.getByRole("button",{name:"备份",exact:true}).click();
   const downloadPromise=page.waitForEvent("download");
   await page.getByRole("button",{name:"下载当前备份",exact:true}).click();
   const download=await downloadPromise;
   const backup=JSON.parse(await readFile(await download.path(),"utf8"));
+  assert.equal(backup.formatVersion,2);
+  assert.equal(backup.subscriptions.find(item=>item.name==="ChatGPT Plus").fxRateToCny,7.2352);
   assert.equal(backup.subscriptions.length,6);assert.equal(backup.renewalLogs.length,2);
   assert.equal("users" in backup,false);
   const extended=structuredClone(backup);
@@ -101,6 +131,17 @@ try {
 
   await page.waitForFunction(()=>document.querySelectorAll('[data-sonner-toast]').length===0,undefined,{timeout:12000});
   await page.screenshot({path:output+"/desktop-grid.png",fullPage:true});
+  await page.getByRole("button",{name:"支出分析",exact:true}).click();
+  await page.getByRole("heading",{name:"金额与支出分析"}).waitFor();
+  assert.equal(await page.getByRole("heading",{name:"支出类型占比"}).count(),1);
+  await page.screenshot({path:output+"/desktop-report.png",fullPage:true});
+  for(const width of [320,390,768]){
+    await page.setViewportSize({width,height:900});
+    const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
+    assert.ok(layout.scroll<=layout.width,JSON.stringify(layout));
+    await page.screenshot({path:output+`/report-${width}.png`,fullPage:true});
+  }
+  await page.getByRole("button",{name:"返回订阅",exact:true}).click();
   await page.getByTitle("紧凑列表视图").click();
   for(const width of [320,375,390,768]){
     await page.setViewportSize({width,height:900});

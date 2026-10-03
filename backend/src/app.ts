@@ -9,6 +9,7 @@ import type { Config } from "./config.ts";
 import { RenewalHistory } from "./renewal-history.ts";
 import { BackupService } from "./backups.ts";
 import { idSchema } from "./validation.ts";
+import { ExchangeRates } from "./exchange-rates.ts";
 
 const cookieName = "membership_session";
 function tokenFromCookie(value: string | undefined): string {
@@ -24,6 +25,7 @@ export function createApp(db: DatabaseSync, config: Config) {
   const subscriptions = new SubscriptionService(db, config.timeZone);
   const history = new RenewalHistory(db);
   const backups = new BackupService(db);
+  const exchangeRates = new ExchangeRates();
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxy ? config.trustedProxyRanges : false);
@@ -101,6 +103,7 @@ export function createApp(db: DatabaseSync, config: Config) {
     next();
   });
   app.get("/api/auth/session", (_req,res) => res.json({ user:res.locals.user }));
+  app.get("/api/exchange-rate", async (req,res) => res.json(await exchangeRates.lookup(req.query)));
   app.get("/api/subscriptions", (_req,res) => res.json(subscriptions.list(res.locals.user.id)));
   app.get("/api/subscriptions/history", (req,res) => {
     const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);

@@ -49,7 +49,8 @@ after(async () => {
     if (server) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
   db?.close();
-  if (directory) await rm(directory, { recursive: true, force: true });
+  // SQLite WAL files can remain briefly busy on Windows after the handle closes.
+  if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 test("公开看板只返回管理员真实记录，隐藏备注、真实版本和其他用户数据", async () => {

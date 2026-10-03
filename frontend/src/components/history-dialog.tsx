@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { apiRequest } from "@/lib/api";
 import type { HistoryPage } from "../../../shared/renewals.ts";
 import { formatDateTime } from "@/lib/dashboard-helpers";
-const currency = (n: number) => n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { money, amountInCny } from "../../../shared/currency.ts";
 
 type HistoryDialogProps = { open: boolean; onOpenChange: (open: boolean) => void; subscriptionId?: string; subscriptionName?: string };
 /** Read paginated, private renewal entries, including retained records for deleted subscriptions. */
@@ -34,7 +34,7 @@ export function HistoryDialog({ open, onOpenChange, subscriptionId, subscription
     <div className="history-list">{!error && page.logs.map(log => <div className="history-entry" key={log.id}>
       <div><strong>{log.subscriptionName}</strong><small>{log.kind === "automatic" ? "自动续费" : "手动续费"} · {log.periods} 个周期</small><small>{formatDateTime(log.createdAt)}</small></div>
       <div className="history-dates"><span>{log.previousStartDate} → {log.previousEndDate}</span><b>→ {log.newStartDate} → {log.newEndDate}</b></div>
-      <div className="history-amount">{log.amount === null ? "金额未记录" : `约 ¥${currency(log.amount)}`}{log.undoneAt ? <em>已撤销</em> : null}</div>
+      <div className="history-amount">{log.amount === null ? "金额未记录" : <>{money(log.amount, log.currency)}{log.currency && log.currency !== "CNY" && <small>折合 {money(amountInCny(log.amount, log.fxRateToCny))}</small>}</>}{log.undoneAt ? <em>已撤销</em> : null}</div>
     </div>)}</div>
     {page.total > 50 && <div className="history-pagination"><button className="button light" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>上一页</button><span>{offset + 1}–{Math.min(offset + 50, page.total)} / {page.total}</span><button className="button light" disabled={offset + 50 >= page.total} onClick={() => setOffset(offset + 50)}>下一页</button></div>}
   </DialogContent></Dialog>;
