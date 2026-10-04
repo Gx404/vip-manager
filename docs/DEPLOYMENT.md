@@ -17,7 +17,7 @@
 
 - PUBLIC_ORIGIN：实际访问来源，例如 https://members.example.com，不要带末尾斜杠。
 - ADMIN_USERNAME：3–60 位字母、数字或 _.-。
-- ADMIN_PASSWORD：自己生成的 16–256 字符强密码。
+- ADMIN_PASSWORD：8–256 字符；公网使用建议选择更长且不重复的密码。
 - 正式 HTTPS 部署保持 COOKIE_SECURE=true。
 
 不要把 .env、密码、数据库、TLS 私钥或 GitHub Token 上传到仓库。私有仓库下载时使用自己的 SSH 或 Git 凭据，不要把令牌拼在 URL 中。

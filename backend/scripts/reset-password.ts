@@ -2,12 +2,13 @@ import { readFileSync } from "node:fs";
 import { readConfig } from "../src/config.ts";
 import { openDatabase,transaction } from "../src/database.ts";
 import { hashPassword } from "../src/auth.ts";
+import { assertPasswordLength } from "../src/password-policy.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 let db:DatabaseSync|undefined;
 try {
   const password=readFileSync(0,"utf8").replace(/\r?\n$/,"");
-  if(password.length<16||password.length>256)throw new Error("新密码必须为 16–256 字符，通过标准输入提供。");
+  assertPasswordLength(password,"新密码");
   db=openDatabase(readConfig().databasePath);
   if(!db.prepare("SELECT id FROM users LIMIT 1").get())throw new Error("管理员尚未创建，请先正常启动服务。");
   const hash=await hashPassword(password);

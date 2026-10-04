@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "./config.ts";
 import { ApiError } from "./errors.ts";
 import { transaction } from "./database.ts";
+import { assertPasswordLength, PASSWORD_MIN_LENGTH } from "./password-policy.ts";
 
 const scryptOptions = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const derive = (password: string, salt: string) => new Promise<Buffer>((resolve, reject) => {
@@ -34,7 +35,8 @@ export function loginAttemptKey(ip: string, username: string): string { return d
 /** Bootstrap a single owner only on an empty database; environment changes never reset passwords. */
 export async function bootstrapAdmin(db: DatabaseSync, config: Config): Promise<void> {
   if (db.prepare("SELECT id FROM users LIMIT 1").get()) return;
-  if (!config.adminPassword) throw new Error("首次启动必须配置 ADMIN_PASSWORD（至少 16 个字符）。");
+  if (!config.adminPassword) throw new Error(`首次启动必须配置 ADMIN_PASSWORD（至少 ${PASSWORD_MIN_LENGTH} 个字符）。`);
+  assertPasswordLength(config.adminPassword, "初始管理员密码");
   const hash = await hashPassword(config.adminPassword);
   db.prepare("INSERT INTO users (username,password_hash,created_at) VALUES (?,?,?)").run(config.adminUsername, hash, Date.now());
 }

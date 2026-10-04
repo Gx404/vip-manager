@@ -10,13 +10,14 @@ import { RenewalHistory } from "./renewal-history.ts";
 import { BackupService } from "./backups.ts";
 import { idSchema } from "./validation.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
+import { PASSWORD_MAX_LENGTH } from "./password-policy.ts";
 
 const cookieName = "membership_session";
 function tokenFromCookie(value: string | undefined): string {
   const matches = (value ?? "").split(";").map(v => v.trim()).filter(v => v.startsWith(cookieName + "="));
   return matches.length === 1 ? matches[0].slice(cookieName.length + 1) : "";
 }
-const loginSchema = z.object({ username: z.string().min(1).max(60), password: z.string().min(1).max(256) }).strict();
+const loginSchema = z.object({ username: z.string().min(1).max(60), password: z.string().min(1).max(PASSWORD_MAX_LENGTH) }).strict();
 
 /** Build the independent HTTP API. Caller owns server lifecycle and database cleanup. */
 export function createApp(db: DatabaseSync, config: Config) {

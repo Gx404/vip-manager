@@ -4,9 +4,28 @@ import { openDatabase } from "../src/database.ts";
 import { AuthService, bootstrapAdmin, loginAttemptKey } from "../src/auth.ts";
 import { configurationWarnings, readConfig } from "../src/config.ts";
 import { createApp } from "../src/app.ts";
+import { randomUUID } from "node:crypto";
 
 const password = "test-only-long-admin-password";
 const config = readConfig({ ADMIN_USERNAME: "owner", ADMIN_PASSWORD: password, PUBLIC_ORIGIN: "https://frontend.test" });
+
+test("password configuration accepts 8 and 256 characters, rejecting 7 and 257 without echoing input",()=>{
+  for(const size of [8,256]) assert.equal(readConfig({ADMIN_PASSWORD:"p".repeat(size)}).adminPassword?.length,size);
+  for(const size of [7,257]) {
+    const invalid="p".repeat(size);
+    assert.throws(()=>readConfig({ADMIN_PASSWORD:invalid}),error=>error instanceof Error && /8–256/.test(error.message) && !error.message.includes(invalid));
+  }
+});
+
+test("eight-character bootstrap passwords work; invalid direct bootstrap cannot create an account",async t=>{
+  const db=openDatabase(":memory:");t.after(()=>db.close());
+  await assert.rejects(bootstrapAdmin(db,{...config,adminPassword:"short"}),/8–256/);
+  assert.equal(db.prepare("SELECT count(*) AS count FROM users").get()?.count,0);
+  const shortPassword=randomUUID().slice(0,8), shortConfig=readConfig({ADMIN_USERNAME:"owner",ADMIN_PASSWORD:shortPassword});
+  await bootstrapAdmin(db,shortConfig);
+  assert.match(String(db.prepare("SELECT password_hash FROM users").get()?.password_hash),/^scrypt:/);
+  assert.equal((await new AuthService(db,shortConfig).login("owner",shortPassword,"203.0.113.30")).user.username,"owner");
+});
 
 test("composite login buckets isolate usernames and client IPs and are hashed", async t => {
   const db=openDatabase(":memory:"); t.after(()=>db.close()); await bootstrapAdmin(db,config);

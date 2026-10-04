@@ -132,15 +132,27 @@ test("备份脚本可生成完整快照；重置密码脚本撤销旧会话",asy
   const restored=openDatabase(backupFile);
   assert.equal(new SubscriptionService(restored,config.timeZone).list(1).items.length,1);
   restored.close();
-  const changedPassword="new-test-only-password-not-for-production";
-  await new Promise<void>((resolve,reject)=>{
+  const resetPassword=(value:string)=>new Promise<{code:number|null;detail:string}>((resolve,reject)=>{
     const child=spawn(process.execPath,["backend/scripts/reset-password.ts"],{env,stdio:["pipe","ignore","pipe"]});
     let detail="";
     child.stderr.on("data",chunk=>{detail+=String(chunk);});
     child.on("error",reject);
-    child.on("exit",code=>code===0?resolve():reject(new Error(detail)));
-    child.stdin.end(changedPassword);
+    child.on("close",code=>resolve({code,detail}));
+    child.stdin.on("error",reject);
+    child.stdin.end(value);
   });
+  const originalHash=db.prepare("SELECT password_hash FROM users LIMIT 1").get()?.password_hash;
+  for(const size of [7,257]) {
+    const rejected=await resetPassword("p".repeat(size));
+    assert.equal(rejected.code,1);
+    assert.match(rejected.detail,/8–256/);
+    assert.equal(db.prepare("SELECT password_hash FROM users LIMIT 1").get()?.password_hash,originalHash);
+    assert.equal((await fetch(url+"/api/auth/session",{headers:{Cookie:cookie}})).status,200);
+  }
+  const changedPassword=randomUUID().slice(0,8);
+  assert.equal(changedPassword.length,8);
+  const changed=await resetPassword(changedPassword);
+  assert.equal(changed.code,0,changed.detail);
   assert.equal((await fetch(url+"/api/auth/session",{headers:{Cookie:cookie}})).status,401);
   assert.equal((await post("/api/auth/login",{username:"testadmin",password})).status,401);
   assert.equal((await post("/api/auth/login",{username:"testadmin",password:changedPassword})).status,200);

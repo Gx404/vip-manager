@@ -54,9 +54,9 @@ Docker 数据在命名卷 membership_data 的 /app/backend/data；本地开发�
 
 网页业务迁移也可使用“备份”中的 JSON 导出/导入，流程见 [使用说明](USAGE.md)。它不包含密码、会话或配置，不能替代包含账号状态的 SQLite 备份；覆盖恢复前务必另存现有文件。
 
-修改 .env 不会重置已有数据库。用 Bash 隐藏输入并通过标准输入重置：
+修改 .env 不会重置已有数据库。新密码支持 8–256 字符，建议使用较长且不重复的密码；密码哈希、登录限流和会话保护不变。用 Bash 隐藏输入并通过标准输入重置：
 
-    read -r -s -p 'New password (16+ characters): ' vip_new_password
+    read -r -s -p 'New password (8-256 characters): ' vip_new_password
     printf '\n'
     printf '%s' "$vip_new_password" | docker compose exec -T backend node backend/scripts/reset-password.ts
     unset vip_new_password

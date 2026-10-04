@@ -46,7 +46,7 @@ chmod 600 .env
 | --- | --- |
 | `PUBLIC_ORIGIN` | 实际访问域名，如 `https://members.example.com`，不要带末尾 `/` |
 | `ADMIN_USERNAME` | 自己的管理员账号，默认 `admin` |
-| `ADMIN_PASSWORD` | 自己生成的 16–256 字符强密码，不能留空 |
+| `ADMIN_PASSWORD` | 8–256 字符，不能留空；公网使用建议选择更长且不重复的密码 |
 | `PUBLIC_DASHBOARD` | 默认 `false`；改为 `true` 开启免登录真实只读看板，备注不公开 |
 
 可以用 `openssl rand -hex 24` 在自己的终端生成密码并存入密码管理器。不要把 `.env`、密码或数据库上传到 GitHub。

@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isIP } from "node:net";
+import { assertPasswordLength } from "./password-policy.ts";
 
 export type Config = {
   host: string; port: number; databasePath: string; publicOrigin: string;
@@ -27,9 +28,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   new Intl.DateTimeFormat("en-CA", { timeZone }).format();
   const adminUsername = env.ADMIN_USERNAME ?? "admin";
   if (!/^[a-zA-Z0-9_.-]{3,60}$/.test(adminUsername)) throw new Error("管理员账号应为 3–60 位字母、数字或 _.-。");
-  if (env.ADMIN_PASSWORD && (env.ADMIN_PASSWORD.length < 16 || env.ADMIN_PASSWORD.length > 256)) {
-    throw new Error("初始管理员密码必须为 16–256 个字符。");
-  }
+  if (env.ADMIN_PASSWORD) assertPasswordLength(env.ADMIN_PASSWORD, "初始管理员密码");
   const trustedProxyRanges = (env.TRUSTED_PROXY_RANGES ?? "loopback,linklocal,uniquelocal").split(",").map(value => value.trim());
   if (!trustedProxyRanges.length || trustedProxyRanges.some(value => {
     if (["loopback", "linklocal", "uniquelocal"].includes(value)) return false;
