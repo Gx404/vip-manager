@@ -24,7 +24,7 @@ export function LoginDialog({open,onOpenChange,onSuccess}:Props) {
   }
   return <Dialog open={open} onOpenChange={value=>{if(!busy){setPassword("");setError("");onOpenChange(value);}}}>
     <DialogContent className="membership-dialog"><DialogHeader><DialogTitle>登录你的会员看板</DialogTitle>
-    <DialogDescription>使用部署时设置的管理员账号，不需要 ChatGPT 登录。</DialogDescription></DialogHeader>
+    <DialogDescription className="sr-only">输入管理员账号和密码。</DialogDescription></DialogHeader>
     <form className="login-form" onSubmit={submit}>
       <label className="form-field"><span>管理员账号</span><input required autoComplete="username" maxLength={60} value={username} onChange={e=>setUsername(e.target.value)}/></label>
       <label className="form-field"><span>密码</span><input required type="password" autoComplete="current-password" maxLength={256} value={password} onChange={e=>setPassword(e.target.value)}/></label>

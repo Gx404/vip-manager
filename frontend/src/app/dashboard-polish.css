@@ -28,13 +28,12 @@
 .status-legend .expired::before { background: #c16166; }
 .status-legend b { color: #304a3d; font-weight: 600; font-variant-numeric: tabular-nums; }
 .overview .spending-summary { background: radial-gradient(ellipse at top right, #3d7e651f, transparent 70%), #153e32; border-color: #153e32; color: #fff; transition: background-color .18s, box-shadow .18s; }
-.overview .spending-summary:hover { background-color: #1a493b; box-shadow: 0 5px 20px #123e321a; }
+.overview .spending-summary.clickable:hover { background-color: #1a493b; box-shadow: 0 5px 20px #123e321a; }
 .spending-summary .summary-label { color: #c2d8cd; }
 .spending-summary .summary-label svg { color: #b4d4c4; }
 .spending-summary .summary-number { color: #fff; margin-bottom: 7px; }
 .spending-summary .summary-number small { font-size: 1.25rem; font-weight: 400; margin-right: 5px; }
 .spending-summary .summary-number span { color: #b3cfc1; }
-.spending-description { color: #b6cfc2; margin: 0; font-size: .74rem; line-height: 1.6; }
 .spending-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid #ffffff20; font-size: .75rem; color: #b6cfc2; }
 .spending-bottom b { color: #e1eee5; font-weight: 500; }
 .summary-link { display: inline-flex; align-items: center; gap: 4px; color: #e5f2e9; }
@@ -98,7 +97,6 @@
   .overview .summary-number span { font-size: .64rem; margin-left: 4px; }
   .spending-summary .summary-number span { display: none; }
   .spending-summary .summary-number small { font-size: .9rem; margin-right: 2px; }
-  .spending-description { font-size: .63rem; }
   .spending-bottom { font-size: .63rem; margin-top: 10px; padding-top: 10px; gap: 6px; }
   .summary-link { font-size: .65rem; }
   .status-legend { gap: 7px 12px; font-size: .67rem; margin-top: 12px; }

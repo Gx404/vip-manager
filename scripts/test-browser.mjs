@@ -13,7 +13,7 @@ import { dateKey, shiftDate } from "../shared/subscriptions.ts";
 import { brands } from "../shared/brands.ts";
 
 const playwright = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : "playwright");
-const config = readConfig({ PUBLIC_ORIGIN:"http://127.0.0.1", COOKIE_SECURE:"false", ADMIN_USERNAME:"browser-test", ADMIN_PASSWORD:randomUUID() });
+const config = readConfig({ PUBLIC_ORIGIN:"http://127.0.0.1", COOKIE_SECURE:"false", PUBLIC_DASHBOARD:"true", ADMIN_USERNAME:"browser-test", ADMIN_PASSWORD:randomUUID() });
 const db=openDatabase(":memory:");
 let server, browser;
 const output=fileURLToPath(new URL("../outputs/browser-tests/",import.meta.url));
@@ -32,12 +32,33 @@ try {
   browser=await playwright.chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})});
   const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
   const csrf={"X-Requested-With":"membership-dashboard",Origin:config.publicOrigin};
-  assert.equal((await context.request.post(config.publicOrigin+"/api/auth/login",{headers:csrf,data:{username:config.adminUsername,password:config.adminPassword}})).status(),200);
   const page=await context.newPage(), errors=[];
   page.on("pageerror",error=>errors.push(error.message));
   const records=async()=>(await (await context.request.get(config.publicOrigin+"/api/subscriptions")).json()).items;
   await page.goto(config.publicOrigin);
   await page.getByRole("heading",{name:"ChatGPT Plus",exact:true}).waitFor();
+  const assertGuest=async()=>{
+    assert.deepEqual(await page.locator('.header-actions button').allTextContents(),['管理员登录']);
+    assert.equal(await page.locator('.overview button,.summary-link,.card-actions,.report-page,.help-tooltip').count(),0);
+    assert.equal(await page.getByRole('dialog').count(),0);
+    assert.equal(await page.locator('.spending-summary').evaluate(el=>el.tagName),'DIV');
+    assert.equal(await page.locator('.spending-summary').evaluate(el=>el.tabIndex),-1);
+  };
+  await assertGuest();
+  await page.locator('.spending-summary').click();await assertGuest();
+  assert.equal((await context.request.get(config.publicOrigin+'/api/backup')).status(),401);
+  assert.equal((await context.request.get(config.publicOrigin+'/api/subscriptions/history')).status(),401);
+  for (const width of [320,390,1440]) {
+    await page.setViewportSize({width,height:1000});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.screenshot({path:output+`/guest-${width}.png`,fullPage:width===1440});
+  }
+  await page.getByRole('button',{name:'管理员登录',exact:true}).click();
+  await page.getByLabel('管理员账号',{exact:true}).fill(config.adminUsername);
+  await page.getByLabel('密码',{exact:true}).fill(config.adminPassword);
+  await page.getByRole('button',{name:'登录',exact:true}).click();
+  await page.getByRole('button',{name:'退出',exact:true}).waitFor();
+  console.log('PASS guest-only subscription browsing, static overview, private API auth and UI login');
   assert.equal(await page.locator(".subscription-card").count(),6);
   assert.equal(await page.locator(".overview .summary-card").count(),2);
   assert.equal(await page.locator(".header-date").count(),0);
@@ -45,11 +66,40 @@ try {
   assert.equal(await page.locator(".page-footer time").count(),1);
   assert.ok(await page.locator(".overview-bars i").first().evaluate(element=>element.getBoundingClientRect().height>0));
   await page.getByRole("button",{name:"月均支出，查看摊算明细",exact:true}).click();
-  await page.getByRole("heading",{name:"月均支出怎么算？",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"月均支出明细",exact:true}).waitFor();
+  assert.equal(await page.locator('.help-tooltip').count(),0);
+  await page.screenshot({path:output+'/cost-compact.png',animations:'disabled'});
+  const help=page.getByRole('button',{name:'月均支出计算说明',exact:true});
+  await help.hover();await page.locator('.help-tooltip').waitFor();
+  await page.screenshot({path:output+'/cost-help.png',animations:'disabled'});
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.help-tooltip').count(),0);
+  assert.equal(await page.getByRole('dialog').count(),1);
+  await help.focus();await help.press('Enter');await page.locator('.help-tooltip').waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog').count(),1);
   await page.keyboard.press("Escape");
+  const fonts=await page.evaluate(()=>['.service-name p','.expiry-date','.small-label','.progress-caption'].map(selector=>parseFloat(getComputedStyle(document.querySelector(selector)).fontSize)));
+  assert.ok(fonts.every(size=>size>=13),JSON.stringify(fonts));
+  const touchContext=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,storageState:await context.storageState()});
+  const touch=await touchContext.newPage();await touch.goto(config.publicOrigin);
+  await touch.getByRole('button',{name:'月均支出，查看摊算明细',exact:true}).tap();
+  await touch.getByRole('button',{name:'月均支出计算说明',exact:true}).tap();
+  await touch.locator('.help-tooltip').waitFor();
+  assert.ok(await touch.locator('.help-tooltip').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}));
+  await touch.screenshot({path:output+'/touch-help.png',animations:'disabled'});
+  await touch.getByRole('button',{name:'月均支出计算说明',exact:true}).tap();
+  assert.equal(await touch.locator('.help-tooltip').count(),0);
+  await touch.getByRole('button',{name:'月均支出计算说明',exact:true}).tap();
+  await touch.locator('.help-tooltip').waitFor();
+  await touch.keyboard.press('Escape');assert.equal(await touch.getByRole('dialog').count(),1);
+  await touchContext.close();await page.bringToFront();
+  console.log('PASS on-demand help: closed by default, hover, keyboard, touch, Escape and readable text');
   assert.equal(await page.locator(".subscription-grid .quick-renew").count(),0);
   assert.equal(await page.getByRole("button",{name:/快捷续费/}).count(),0);
   await page.getByRole("button",{name:"添加订阅",exact:true}).click();
+  assert.equal(await page.locator('.help-tooltip').count(),0);
+  await page.screenshot({path:output+'/editor-compact.png',animations:'disabled'});
   await page.getByLabel("本期开始日期").fill("2026-01-31");
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2026-02-28");
   assert.equal(await page.getByLabel("购买日期（汇率基准）").inputValue(),"2026-01-31");
@@ -89,6 +139,9 @@ try {
   await page.getByLabel("套餐名称").fill("unsaved");
   assert.equal(await page.getByRole("button",{name:"快捷续费",exact:true}).isDisabled(),true);
   await page.getByLabel("套餐名称").fill("测试套餐");
+  await page.getByRole('button',{name:'删除',exact:true}).click();
+  assert.equal(await page.getByRole('alertdialog').getByText(/删除后不能在页面内撤销/).isVisible(),true);
+  await page.getByRole('alertdialog').getByRole('button',{name:'取消',exact:true}).click();
   await page.getByRole("button",{name:"快捷续费",exact:true}).click();
   await page.getByRole("button",{name:"撤销",exact:true}).click();
   await page.getByText("已撤销本次续费记录",{exact:true}).waitFor();
@@ -128,6 +181,7 @@ try {
   await choose(backup);
   await page.getByText(/文件校验通过：6/).waitFor();
   await page.getByLabel("覆盖恢复",{exact:true}).check();
+  assert.equal(await page.getByText(/将用文件替换当前全部订阅与流水/).isVisible(),true);
   assert.equal(await page.getByRole("button",{name:"确认覆盖恢复",exact:true}).isDisabled(),true);
   const beforeReplace=page.waitForEvent("download");
   await page.getByRole("button",{name:"下载当前备份",exact:true}).click();await beforeReplace;
@@ -181,6 +235,20 @@ try {
   assert.match(await page.locator(".status-legend .expired").innerText(),/1/);
   await page.setViewportSize({width:1440,height:1000});
   await page.screenshot({path:output+"/desktop-states.png",fullPage:true});
+
+  await page.getByRole('button',{name:'支出分析',exact:true}).click();
+  await page.getByRole('button',{name:'退出',exact:true}).click();
+  await page.getByRole('button',{name:'管理员登录',exact:true}).waitFor();await assertGuest();
+  assert.equal((await context.request.post(config.publicOrigin+'/api/auth/login',{headers:csrf,data:{username:config.adminUsername,password:config.adminPassword}})).status(),200);
+  await page.reload();await page.getByRole('button',{name:'退出',exact:true}).waitFor();
+  await page.getByRole('button',{name:'月均支出，查看摊算明细',exact:true}).click();
+  await page.getByRole('heading',{name:'月均支出明细',exact:true}).waitFor();
+  db.prepare('DELETE FROM sessions').run(); // Disposable test DB only: simulate session expiry in an open modal.
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await page.getByRole('button',{name:'管理员登录',exact:true}).waitFor();await assertGuest();
+  assert.equal((await context.request.post(config.publicOrigin+'/api/auth/login',{headers:csrf,data:{username:config.adminUsername,password:config.adminPassword}})).status(),200);
+  await page.reload();await page.getByRole('button',{name:'退出',exact:true}).waitFor();
+  console.log('PASS logout and expired-session refresh close secondary pages/modals');
 
   // Verify every static brand asset decodes at small size, including newly added SVGs.
   const gallery=await context.newPage();await gallery.goto(config.publicOrigin);

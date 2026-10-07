@@ -1,0 +1,75 @@
+/* Local system fonts, readable secondary text and on-demand guidance. No remote font requests. */
+:root { --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+body { font-family: var(--font-sans); line-height: 1.55; }
+button, input, textarea, select { font-family: inherit; }
+.muted, .brand-caption { color: #607269; }
+.dashboard .summary-label { font-size: .9375rem; }
+.overview .summary-number { font-weight: 600; }
+.overview .summary-number span { color: #566b60; }
+.overview .spending-summary .summary-number span { color: #c9dfd3; }
+.spending-summary { display: flex; flex-direction: column; justify-content: space-between; }
+.spending-summary .summary-label { width: 100%; }
+.spending-summary .summary-number { margin: 12px 0 16px; }
+.spending-bottom { width: 100%; margin-top: auto; font-size: .8125rem; color: #c9dfd3; }
+.summary-link, .status-legend { font-size: .8125rem; }
+.status-legend { color: #526b5c; }
+.subscription-card .service-name h2, .subscription-row .row-service h2 { font-size: 1.0625rem; font-weight: 600; line-height: 1.5; }
+.subscription-card .service-name p, .subscription-row .row-service p { font-size: .8125rem; color: #596f63; }
+.subscription-card .small-label, .subscription-card .remaining-block .small-label { font-size: .8125rem; color: #53685d; }
+.subscription-card .expiry-date { font-size: .8125rem; color: #53685d; }
+.subscription-card .progress-caption { font-size: .8125rem; color: #53685d; }
+.card-tags { flex-wrap: wrap; }
+.card-status { font-size: .75rem; color: #3d7154; }
+.tag { font-size: .75rem; }
+.category-tag { color: #3f755d; }
+.cycle-tag { color: #58677c; }
+.subscription-card .card-metrics p { font-size: .9375rem; }
+.subscription-card .card-metrics small { font-size: .8125rem; color: #596f63; }
+.subscription-card .card-metrics .green { color: #176b50; }
+.section-caption .muted { font-size: .8125rem; color: #466152; }
+.dashboard .category-list [data-slot="tabs-trigger"] { color: #526c5d !important; }
+.dashboard .category-list [data-state="active"] { color: #fff !important; }
+.category-list [data-slot="tabs-trigger"] > span { color: #627668; font-size: .8125rem; }
+.row-amount, .row-date b { font-size: .875rem; }
+.row-amount small, .row-date time { font-size: .8125rem; color: #556d5e; }
+.page-footer { font-size: .8125rem; color: #607267; }
+.report-kpis span, .report-section h3, .report-bar-row, .report-list li { font-size: .875rem; color: #354e40; }
+.report-kpis small, .report-bar-row > span small, .report-bar-row b small, .report-list small, .report-fx small, .report-fx span { font-size: .8125rem; color: #566e5e; }
+.report-modes { font-size: .8125rem; color: #566e5e; }
+.report-fx > div { font-size: .875rem; }
+.title-with-help, .field-label-with-help { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.title-with-help { padding-right: 22px; }
+.title-with-help [data-slot="dialog-title"] { padding-right: 0; line-height: 1.45; text-align: left; }
+.report-heading .title-with-help { padding-right: 0; }
+.report-heading h2 { margin: 0; }
+.context-help { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; color: #60766a; background: transparent; }
+.context-help:hover, .context-help[aria-expanded="true"] { color: #18583f; background: #e8f0eb; }
+.context-help:focus-visible { outline: 2px solid #278464; outline-offset: 2px; }
+.help-tooltip { z-index: 100; max-width: min(360px, calc(100vw - 32px)); max-height: min(60vh, var(--radix-tooltip-content-available-height)); overflow-y: auto; padding: 13px 16px; border: 1px solid #d5e0d9; border-radius: 10px; background: #fff; color: #31483c; box-shadow: 0 7px 26px #203f3424; font-family: var(--font-sans); font-size: .875rem; font-weight: 400; line-height: 1.75; text-align: left; overflow-wrap: anywhere; }
+.help-tooltip p { margin: 0; }
+.help-tooltip p + p { margin-top: 8px; }
+.help-arrow { fill: #fff; }
+.billing-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 16px; }
+.billing-actions .linked-hint { font-size: .75rem; margin: 0; }
+.fx-status { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: #476850; font-size: .8125rem; }
+.form-field, .switch-field, .membership-dialog .text-action, .membership-dialog .text-danger { font-size: .875rem; color: #405e4a; }
+.membership-dialog .text-danger { color: #ad423e; }
+.form-field input, .form-field select, .form-field textarea { font-size: .9375rem; color: #243c2d; }
+.form-field input::placeholder, .form-field textarea::placeholder { color: #6d7c73; }
+.cost-list li > span > small, .cost-list b small, .history-entry small, .history-dates, .backup-preview { font-size: .8125rem; color: #50695a; }
+.renewal-action small { color: #6e5934; font-size: .8125rem; }
+.reminder-list small { color: #50695a; }
+.topbar.guest-topbar { flex-direction: row; align-items: center; }
+.guest-topbar .header-actions { width: auto; }
+@media (max-width: 590px) {
+  .overview .summary-label, .overview .summary-number span, .summary-link, .status-legend, .spending-bottom { font-size: .8125rem; }
+  .overview .summary-card { padding: 16px 12px; }
+  .overview .spending-summary .summary-number { margin: 14px 0; }
+  .header-actions .primary { font-size: .8125rem; }
+  .subscription-card .remaining-block { padding-bottom: 14px; }
+  .subscription-card .expiry-date { font-size: .8125rem; }
+  .report-heading h2 { font-size: 1.125rem; }
+  .report-heading .button { font-size: .8125rem; }
+  .form-field input, .form-field select, .form-field textarea { font-size: 1rem; }
+  .row-amount small, .row-date time { font-size: .75rem; }
+}

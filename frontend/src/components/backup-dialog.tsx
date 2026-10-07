@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { CompactDialogHeader } from "@/components/context-help";
 import { apiRequest, ApiError } from "@/lib/api";
 import { dateKey } from "@/lib/subscriptions";
 import type { BackupDocument, ImportPreview } from "../../../shared/renewals.ts";
@@ -76,7 +77,7 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
 
   return <Dialog open={open} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
     <DialogContent className="membership-dialog backup-dialog">
-      <DialogHeader><DialogTitle>数据备份与恢复</DialogTitle><DialogDescription>JSON 包含完整订阅、私人备注、续费锚点和流水，不含账号密码、登录会话或服务器配置。仅管理员可用。</DialogDescription></DialogHeader>
+      <CompactDialogHeader title="数据备份与恢复" helpLabel="备份与导入说明" help={<><p>JSON 包含订阅、私人备注、续费锚点和流水，不含密码、会话或服务器配置，请妥善保管。</p><p>支持最多 2,000 条订阅、10,000 条流水、20 MB。更大规模或连同账号迁移，请使用服务器 SQLite 备份。</p><p>导入不执行扣款；自动续费的到期记录在后台检查时推进，导入流水不支持快捷撤销。</p></>} />
       <div className="backup-actions">
         <button className="button secondary" disabled={busy} onClick={() => void exportCurrent()}><Download size={16} />下载当前备份</button>
         <label className="backup-file"><Upload size={16} />选择 JSON
@@ -96,9 +97,7 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
           <p className="red">将用文件替换当前全部订阅与流水，页面内不可撤销。请先下载当前备份。</p>
           <label><input type="checkbox" checked={replaceConfirmed} disabled={busy || !backupDownloaded} onChange={event => setReplaceConfirmed(event.target.checked)} />我已确认备份文件保存成功，同意覆盖当前数据</label>
         </>}
-        <p>导入不会执行真实扣款。开启自动续费的到期记录会在后台下一轮检查时推进，导入流水不能使用快捷撤销。</p>
       </div>}
-      <p className="cost-note">支持最多 2,000 条订阅、10,000 条流水、20 MB。更大规模或连同账号迁移，请使用服务器 SQLite 备份。</p>
       <div className="dialog-right-actions">
         <button className="button light" disabled={busy} onClick={() => onOpenChange(false)}>关闭</button>
         <button className={mode === "replace" ? "button danger" : "button primary"} disabled={!preview || busy || (mode === "replace" && (!backupDownloaded || !replaceConfirmed))} onClick={() => void importBackup()}>{mode === "replace" ? "确认覆盖恢复" : "确认合并导入"}</button>

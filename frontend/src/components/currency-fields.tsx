@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { currencyCatalog, type CurrencyCode, type HistoricalRate } from "../../../shared/currency.ts";
+import { ContextHelp } from "@/components/context-help";
 export type CurrencyDraft = {
   currency: CurrencyCode; purchaseDate: string; fxRateToCny: string; fxRateDate: string; fxRateSource: "manual" | "frankfurter";
 };
@@ -35,7 +36,7 @@ export function CurrencyFields({ value, onChange }: { value: CurrencyDraft; onCh
     {value.currency !== "CNY" && <div className="fx-fields wide">
       <label className="form-field"><span>购买时汇率（1 {value.currency} = 人民币） *</span><input required type="number" min="0.00000001" max="100000" step="any" value={value.fxRateToCny} placeholder="输入实际结算汇率，或查询历史值" onChange={event => { invalidate(); onChange({ fxRateToCny: event.target.value, fxRateDate: value.purchaseDate, fxRateSource: "manual" }); }} /></label>
       <button type="button" className="button light" disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(value.purchaseDate)} onClick={() => void lookup()}>{busy ? "查询中…" : "查询购买日汇率"}</button>
-      <p className="form-help">只查询购买当年该日期；非交易日取此前可用报价。保存后锁定，跨年续费也不改写。{value.fxRateToCny && <span>当前：{value.fxRateSource === "frankfurter" ? "Frankfurter 历史参考" : "手动结算"} · {value.fxRateDate}</span>}</p>
+      <div className="fx-status">{value.fxRateToCny && <span>{value.fxRateSource === "frankfurter" ? "Frankfurter 历史参考" : "手动结算"} · {value.fxRateDate}</span>}<ContextHelp label="历史汇率说明">按购买日期查询，非交易日取此前报价。保存后锁定，跨年续费也不改写。可按实际账单手动填写。</ContextHelp></div>
       {error && <p className="red form-help" role="alert">{error}</p>}
     </div>}
   </>;

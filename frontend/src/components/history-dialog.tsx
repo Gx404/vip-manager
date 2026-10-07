@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { CompactDialogHeader } from "@/components/context-help";
 import { apiRequest } from "@/lib/api";
 import type { HistoryPage } from "../../../shared/renewals.ts";
 import { formatDateTime } from "@/lib/dashboard-helpers";
@@ -27,7 +28,7 @@ export function HistoryDialog({ open, onOpenChange, subscriptionId, subscription
   }, [open, offset, subscriptionId]);
   useEffect(() => { if (!open) { setOffset(0); setPage({ logs: [], total: 0 }); } }, [open]);
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="membership-dialog history-dialog">
-    <DialogHeader><DialogTitle>{subscriptionName ? `${subscriptionName} · 续费流水` : "续费流水"}</DialogTitle><DialogDescription>这里只记录看板账期变化和金额估算，不代表平台真实扣款。</DialogDescription></DialogHeader>
+    <CompactDialogHeader title={subscriptionName ? `${subscriptionName} · 续费流水` : "续费流水"} helpLabel="续费流水说明" help="这里只记录看板账期变化和金额估算，不代表平台真实扣款。撤销记录会保留，删除订阅也不会删除历史流水。" />
     {loading && <p className="muted">读取中…</p>}
     {error && <div className="sync-banner" role="alert">{error}</div>}
     {!loading && !error && !page.logs.length && <p className="muted">还没有续费记录。</p>}
