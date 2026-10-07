@@ -1,0 +1,116 @@
+/* Dashboard hierarchy: one spending focal point, quiet utilities, explicit urgency. */
+.dashboard { max-width: 1730px; padding-top: 32px; }
+.topbar { gap: 24px; margin-bottom: 28px; }
+.brand h1 { letter-spacing: -.045em; }
+.header-actions { gap: 8px; }
+.header-secondary { display: flex; align-items: center; gap: 2px; border-left: 1px solid #dfe6e3; padding-left: 8px; margin-left: 2px; }
+.button.quiet { background: transparent; border: 1px solid transparent; box-shadow: none; color: #60746d; }
+.button.quiet:hover { background: #e7efeb; color: #1c5746; }
+.button.primary { background: #207f63; box-shadow: 0 3px 8px #17594014; }
+.button.primary:hover { background: #19664f; }
+.notification-button.has-reminders { border-color: #e6d6b8; color: #976119; background: #fffaf1; }
+.notification-button.has-reminders b { background: #ad701e; color: #fff; }
+.header-actions .button:focus-visible, .summary-card:focus-visible { outline: 3px solid #80b5f0; outline-offset: 3px; }
+
+.overview { gap: 18px; margin-bottom: 28px; }
+.overview .summary-card { padding: 22px 26px; border-radius: 17px; min-width: 0; text-align: left; }
+.summary-label { font-weight: 500; color: #60766c; }
+.overview .summary-number { margin: 12px 0 16px; font-size: clamp(2rem, 3.6vw, 2.8rem); line-height: 1.15; letter-spacing: -.045em; font-weight: 650; overflow-wrap: anywhere; }
+.overview .summary-number span { font-size: .85rem; margin-left: 10px; font-weight: 400; letter-spacing: 0; color: #7b8e85; }
+.subscription-summary .overview-bars { display: flex; gap: 4px; height: 7px; padding-top: 0; width: 100%; border-radius: 3px; overflow: hidden; background: #edf2ef; }
+.subscription-summary .overview-bars i { flex: 1; min-width: 0; background: #5b9e85; }
+.subscription-summary .overview-bars i.soon { background: #d1a150; }
+.subscription-summary .overview-bars i.expired { background: #d07678; }
+.status-legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 15px; font-size: .75rem; color: #64796d; }
+.status-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.status-legend span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #5b9e85; }
+.status-legend .soon::before { background: #c28c31; }
+.status-legend .expired::before { background: #c16166; }
+.status-legend b { color: #304a3d; font-weight: 600; font-variant-numeric: tabular-nums; }
+.overview .spending-summary { background: radial-gradient(ellipse at top right, #3d7e651f, transparent 70%), #153e32; border-color: #153e32; color: #fff; transition: background-color .18s, box-shadow .18s; }
+.overview .spending-summary:hover { background-color: #1a493b; box-shadow: 0 5px 20px #123e321a; }
+.spending-summary .summary-label { color: #c2d8cd; }
+.spending-summary .summary-label svg { color: #b4d4c4; }
+.spending-summary .summary-number { color: #fff; margin-bottom: 7px; }
+.spending-summary .summary-number small { font-size: 1.25rem; font-weight: 400; margin-right: 5px; }
+.spending-summary .summary-number span { color: #b3cfc1; }
+.spending-description { color: #b6cfc2; margin: 0; font-size: .74rem; line-height: 1.6; }
+.spending-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid #ffffff20; font-size: .75rem; color: #b6cfc2; }
+.spending-bottom b { color: #e1eee5; font-weight: 500; }
+.summary-link { display: inline-flex; align-items: center; gap: 4px; color: #e5f2e9; }
+
+.section-toolbar { margin-bottom: 14px; }
+.section-caption { font-size: 1.02rem; font-weight: 650; gap: 9px; }
+.section-caption .muted { font-size: .72rem; background: #e6eee9; color: #657e70; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.dashboard .category-list { background: #eaf0ed !important; border: 1px solid #e3eae6; padding: 5px !important; border-radius: 12px !important; }
+.dashboard .category-list [data-state="active"] { background: #286b52 !important; color: #fff !important; box-shadow: 0 1px 4px #1b453414 !important; }
+.dashboard .category-list [data-state="active"] > span { color: #d7e9df; }
+.category-tabs { margin-bottom: 22px; }
+.subscription-card { box-shadow: 0 2px 5px #20342a03; border-color: #e1e8e3; }
+.subscription-card.soon { border-color: #e9d8b7; }
+.subscription-card.expired { border-color: #e6c8cb; }
+.subscription-card .service-name h2 { font-size: 1rem; font-weight: 650; color: #233a30; }
+.subscription-card .service-name p { color: #7c8d85; }
+.card-tags { gap: 5px; }
+.card-status { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 5px; font-size: .65rem; color: #55816a; background: #f0f6f2; white-space: nowrap; }
+.card-status::before { content: ""; width: 4px; height: 4px; background: currentColor; border-radius: 50%; flex-shrink: 0; }
+.card-status.soon { color: #91601c; background: #fbf2df; }
+.card-status.expired { color: #a34854; background: #fbecef; }
+.subscription-card .remaining-block { margin: 20px -8px 14px; padding: 15px 12px 11px; border-radius: 10px; background: var(--time-tint, #f7faf8); }
+.subscription-card .remaining-block .small-label { color: #697e73; font-size: .72rem; }
+.subscription-card .remaining-number { letter-spacing: -.04em; font-size: 3rem; font-weight: 600; line-height: 1.15; margin-top: 4px; }
+.subscription-card .remaining-number span { font-size: .85rem; font-weight: 400; color: #7e8f86; }
+.subscription-card .expiry-date { right: 12px; bottom: 16px; color: #72867b; font-size: .7rem; }
+.subscription-card .progress-caption { color: #718378; font-size: .7rem; }
+.subscription-card .progress-caption span:last-child { color: #3c5748; font-weight: 600; font-variant-numeric: tabular-nums; }
+.subscription-card .segments { height: 6px; }
+.subscription-card .card-metrics { margin-top: 20px; padding-top: 18px; border-top: 1px solid #edf1ee; }
+.subscription-card .card-metrics p { font-size: .85rem; }
+.subscription-card .card-metrics strong { font-size: 1.15rem; font-weight: 600; letter-spacing: -.025em; }
+.subscription-card .icon-button:hover, .subscription-row .icon-button:hover { background: #eaf1ed; color: #216a4f; }
+.subscription-row.soon { border-left: 3px solid #d4ab62; }
+.subscription-row.expired { border-left: 3px solid #cf8790; }
+
+@media (max-width: 1180px) {
+  .header-actions { gap: 6px; }
+  .header-actions .button { padding-left: 11px; padding-right: 11px; }
+  .header-secondary .button span { display: none; }
+  .overview .summary-card { padding: 22px; }
+}
+@media (max-width: 760px) {
+  .topbar { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .header-actions { width: 100%; max-width: none; justify-content: flex-start; flex-wrap: nowrap; }
+  .header-secondary { border-left: 0; padding-left: 0; margin-left: 0; gap: 0; }
+  .header-actions .header-utility, .header-actions .notification-button { width: 36px; height: 36px; padding: 0; flex-shrink: 0; }
+  .header-actions .header-utility span, .header-actions .notification-button span { display: none; }
+  .header-actions .primary { margin-left: auto; font-size: .75rem; height: 36px; white-space: nowrap; }
+  .header-actions .notification-button { position: relative; }
+  .header-actions .notification-button b { position: absolute; top: -5px; right: -5px; font-size: .6rem; min-width: 15px; height: 15px; line-height: 15px; padding: 0 3px; }
+}
+@media (max-width: 590px) {
+  .dashboard { padding-top: 22px; }
+  .topbar { margin-bottom: 22px; }
+  .overview { gap: 10px; margin-bottom: 24px; }
+  .overview .summary-card { padding: 16px 13px; border-radius: 12px; }
+  .overview .summary-label { font-size: .73rem; }
+  .overview .summary-label svg { width: 14px; height: 14px; }
+  .overview .summary-number { font-size: 1.7rem; margin: 13px 0; }
+  .overview .summary-number span { font-size: .64rem; margin-left: 4px; }
+  .spending-summary .summary-number span { display: none; }
+  .spending-summary .summary-number small { font-size: .9rem; margin-right: 2px; }
+  .spending-description { font-size: .63rem; }
+  .spending-bottom { font-size: .63rem; margin-top: 10px; padding-top: 10px; gap: 6px; }
+  .summary-link { font-size: .65rem; }
+  .status-legend { gap: 7px 12px; font-size: .67rem; margin-top: 12px; }
+  .status-legend span { gap: 4px; }
+  .subscription-card .remaining-number { font-size: 3.15rem; }
+  .subscription-card .expiry-date { font-size: .73rem; }
+  .category-tabs { margin-bottom: 16px; }
+}
+@media (max-width: 360px) {
+  .header-actions { gap: 5px; }
+  .header-actions .header-utility, .header-actions .notification-button { width: 31px; }
+  .header-actions .primary { padding: 0 10px; }
+  .overview .summary-card { padding: 14px 11px; }
+  .overview .summary-number { font-size: 1.48rem; }
+}

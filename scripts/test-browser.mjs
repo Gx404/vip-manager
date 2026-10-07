@@ -10,6 +10,7 @@ import { createApp } from "../backend/src/app.ts";
 import { bootstrapAdmin } from "../backend/src/auth.ts";
 import { SubscriptionService } from "../backend/src/subscriptions.ts";
 import { dateKey, shiftDate } from "../shared/subscriptions.ts";
+import { brands } from "../shared/brands.ts";
 
 const playwright = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : "playwright");
 const config = readConfig({ PUBLIC_ORIGIN:"http://127.0.0.1", COOKIE_SECURE:"false", ADMIN_USERNAME:"browser-test", ADMIN_PASSWORD:randomUUID() });
@@ -39,6 +40,13 @@ try {
   await page.getByRole("heading",{name:"ChatGPT Plus",exact:true}).waitFor();
   assert.equal(await page.locator(".subscription-card").count(),6);
   assert.equal(await page.locator(".overview .summary-card").count(),2);
+  assert.equal(await page.locator(".header-date").count(),0);
+  assert.doesNotMatch(await page.locator(".header-actions").innerText(), /\d{4}\.\d{2}\.\d{2}/);
+  assert.equal(await page.locator(".page-footer time").count(),1);
+  assert.ok(await page.locator(".overview-bars i").first().evaluate(element=>element.getBoundingClientRect().height>0));
+  await page.getByRole("button",{name:"月均支出，查看摊算明细",exact:true}).click();
+  await page.getByRole("heading",{name:"月均支出怎么算？",exact:true}).waitFor();
+  await page.keyboard.press("Escape");
   assert.equal(await page.locator(".subscription-grid .quick-renew").count(),0);
   assert.equal(await page.getByRole("button",{name:/快捷续费/}).count(),0);
   await page.getByRole("button",{name:"添加订阅",exact:true}).click();
@@ -155,8 +163,46 @@ try {
   await page.setViewportSize({width:390,height:900});
   await page.getByTitle("大卡片视图").click();
   await page.screenshot({path:output+"/mobile-grid.png",fullPage:true});
+  for (const width of [320,375,390,590,760,768,1024,1920]) {
+    await page.setViewportSize({width,height:1000});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`Grid overflow at ${width}`);
+    for (const name of ["支出分析","流水","备份","退出","添加订阅"]) {
+      const box=await page.getByRole("button",{name,exact:true}).boundingBox();
+      assert.ok(box && box.x>=0 && box.x+box.width<=width+1,`${name} clipped at ${width}`);
+    }
+    if (width===320) await page.screenshot({path:output+"/grid-320.png",fullPage:true});
+  }
+  // Exercise health states and empty data using this disposable DB, never the deployed server.
+  const samples=await records();
+  service.execute(1,{action:"update",id:samples[0].id,version:samples[0].version,item:{...samples[0],endDate:shiftDate(today,-1)}});
+  service.execute(1,{action:"update",id:samples[2].id,version:samples[2].version,item:{...samples[2],endDate:shiftDate(today,60)}});
+  await page.reload();await page.locator(".subscription-card.expired").waitFor();
+  assert.equal(await page.locator(".subscription-card.healthy").count(),1);
+  assert.match(await page.locator(".status-legend .expired").innerText(),/1/);
+  await page.setViewportSize({width:1440,height:1000});
+  await page.screenshot({path:output+"/desktop-states.png",fullPage:true});
+
+  // Verify every static brand asset decodes at small size, including newly added SVGs.
+  const gallery=await context.newPage();await gallery.goto(config.publicOrigin);
+  await gallery.setViewportSize({width:1000,height:900});
+  await gallery.evaluate(entries=>{
+    document.body.replaceChildren();document.body.style.cssText="margin:24px;background:#f4f6f5;display:grid;grid-template-columns:repeat(6,1fr);gap:12px;font:13px sans-serif";
+    for (const brand of entries) {
+      const tile=document.createElement("div");tile.style.cssText="background:white;padding:16px;display:grid;gap:8px;justify-items:center;border-radius:10px";
+      const img=document.createElement("img");img.src=brand.icon;img.width=36;img.height=36;img.style.objectFit="contain";
+      const label=document.createElement("span");label.textContent=brand.label;tile.append(img,label);document.body.append(tile);
+    }
+  },brands);
+  await gallery.waitForFunction(()=>[...document.images].every(img=>img.complete&&img.naturalWidth>0));
+  assert.equal(await gallery.locator("img").count(),brands.length);
+  await gallery.screenshot({path:output+"/brand-gallery.png",fullPage:true});await gallery.close();
+
+  for (const item of await records()) service.execute(1,{action:"delete",id:item.id,version:item.version});
+  await page.reload();await page.getByRole("heading",{name:"把你的第一个会员加进来",exact:true}).waitFor();
+  assert.equal(await page.locator(".overview .summary-card").count(),2);
+  assert.match(await page.locator(".spending-summary .summary-number").innerText(),/0\.00/);
   assert.deepEqual(errors,[]);
-  console.log("PASS 320/375/390/768 responsive rows, persisted view and zero JS errors");
+  console.log(`PASS 320–1920 responsive grid/header, mobile lists, date removal, health/empty states, ${brands.length} decoded local icons and zero JS errors`);
 } finally {
   await browser?.close();
   if(server)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));

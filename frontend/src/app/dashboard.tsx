@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import {
   Bell, BriefcaseBusiness, Check, Cloud,
   CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus, RotateCw,
-  Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Wallet, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe, History, Upload, List, BarChart3,
+  Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe, History, Upload, List, BarChart3, LogOut,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +25,7 @@ import { BackupDialog } from "@/components/backup-dialog";
 import { SubscriptionRow } from "@/components/subscription-row";
 import { ReportPage } from "@/components/report-page";
 import { CurrencyFields, type CurrencyDraft } from "@/components/currency-fields";
+import { DashboardOverview } from "@/components/dashboard-overview";
 
 const categoryIcons = { "影音娱乐": Music2, "购物会员": ShoppingBag, "AI 工具": Sparkles, "云盘存储": Cloud, "效率办公": BriefcaseBusiness, "生活服务": Coffee, "游戏会员": Gamepad2, "学习教育": GraduationCap, "网络服务": Globe, "其他服务": LayoutGrid };
 const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
@@ -372,24 +373,30 @@ export default function Dashboard() {
     <main className="dashboard">
       <header className="topbar">
         <div className="brand"><h1>Gx404<span className="brand-dot">.</span></h1><span className="brand-divider" /><span className="brand-caption">会员看板</span></div>
-        <div className="header-actions">{authRequired ? <button className="button light" onClick={() => setLoginOpen(true)}>管理员登录</button> : <button className="button light" onClick={() => void signOut()}>退出</button>}<button className="button light header-utility" onClick={() => setReportOpen(value => !value)}><BarChart3 size={16} /><span>{reportOpen ? "返回看板" : "支出分析"}</span></button><span className="header-date">{today.replaceAll("-", ".")}</span><button className="button light notification-button" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b>{due.length}</b>}</button>{!authRequired && <><button className="button light header-utility" title="续费流水" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={16} /><span>流水</span></button><button className="button light header-utility" title="数据备份与恢复" onClick={() => setBackupOpen(true)}><Upload size={16} /><span>备份</span></button><button className="button primary" onClick={() => edit()}><Plus size={17} />添加订阅</button></>}</div>
+        <div className="header-actions">
+          <button className="button light header-utility" aria-label={reportOpen ? "返回看板" : "支出分析"} title={reportOpen ? "返回看板" : "支出分析"} onClick={() => setReportOpen(value => !value)}><BarChart3 size={17} /><span>{reportOpen ? "返回看板" : "支出分析"}</span></button>
+          <button className={`button light notification-button${due.length ? " has-reminders" : ""}`} aria-label={`提醒中心${due.length ? `，${due.length} 项待查看` : ""}`} title="提醒中心" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b aria-hidden="true">{due.length}</b>}</button>
+          {!authRequired && <div className="header-secondary">
+            <button className="button quiet header-utility" aria-label="流水" title="续费流水" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={17} /><span>流水</span></button>
+            <button className="button quiet header-utility" aria-label="备份" title="数据备份与恢复" onClick={() => setBackupOpen(true)}><Upload size={17} /><span>备份</span></button>
+            <button className="button quiet header-utility sign-out" aria-label="退出" title="退出登录" onClick={() => void signOut()}><LogOut size={17} /><span>退出</span></button>
+          </div>}
+          {authRequired ? <button className="button primary" onClick={() => setLoginOpen(true)}>管理员登录</button> : <button className="button primary add-subscription" onClick={() => edit()}><Plus size={17} />添加订阅</button>}
+        </div>
       </header>
 
       {syncError && <div className="sync-banner" role="status"><Info size={16} /><span>{syncError}</span><button onClick={() => void loadRecords()}>重新读取</button></div>}
       {!loading && authRequired && !publicDashboard && !syncError && <div className="auth-banner"><ShieldCheck size={16} /><span>当前为私人看板，请登录查看和管理会员。不会展示示例数据。</span><button onClick={() => setLoginOpen(true)}>登录后管理</button></div>}
 
       {reportOpen ? <ReportPage items={items} today={today} onBack={() => setReportOpen(false)} /> : <>
-      <section className="overview" aria-label="订阅总览">
-        <div className="summary-card"><div className="summary-label">有效订阅<LayoutGrid /></div><div className="summary-number">{active.length}<span>/ {items.length}</span></div><div className="summary-bottom"><div className="overview-bars">{items.map(i => <i key={i.id} className={stateOf(i, today)} />)}</div></div></div>
-        <button className="summary-card clickable" onClick={() => setShowCostBreakdown(true)} aria-haspopup="dialog"><div className="summary-label">月均支出<Wallet /></div><div className="summary-number"><small>¥</small>{currency(monthly)}</div><div className="summary-bottom line"><span>按月摊算 · 查看明细</span><span className="green">年约 ¥{currency(monthly * 12)}</span></div></button>
-      </section>
+      <DashboardOverview items={items} today={today} monthly={monthly} onCosts={() => setShowCostBreakdown(true)} />
 
       <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span></div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">月均费用从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select><div className="view-toggle" role="group" aria-label="视图切换"><button className={viewMode === "grid" ? "active" : ""} aria-pressed={viewMode === "grid"} title="大卡片视图" onClick={() => { setViewMode("grid"); try { localStorage.setItem("membership-view", "grid"); } catch { /* storage can be unavailable */ } }}><LayoutGrid size={15} /></button><button className={viewMode === "list" ? "active" : ""} aria-pressed={viewMode === "list"} title="紧凑列表视图" onClick={() => { setViewMode("list"); try { localStorage.setItem("membership-view", "list"); } catch { /* storage can be unavailable */ } }}><List size={15} /></button></div></div></div>
       <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{visibleCategories.map(({ category: c, count }) => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{count}</span></TabsTrigger>; })}</TabsList></Tabs>
 
       <section className={`subscription-grid ${viewMode === "list" ? "compact-view" : ""}`} aria-label="会员列表">
         {loading && <div className="loading-state"><span className="loading-pulse" />正在读取你的会员清单…</div>}
-        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const progress = periodPercentage(item, today); const color = durationColor(days); if (viewMode === "list") return <SubscriptionRow key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />; return <article key={item.id} className={`subscription-card ${status}`}>
+        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const progress = periodPercentage(item, today); const color = durationColor(days); if (viewMode === "list") return <SubscriptionRow key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />; return <article key={item.id} className={`subscription-card ${status}`} style={{ "--time-color": color, "--time-tint": `${color}0d` } as CSSProperties}>
           <div className="card-heading"><ServiceLogo name={item.name} color={item.color} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div>{!authRequired && <div className="card-actions"><button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button></div>}</div>
           <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
           <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>

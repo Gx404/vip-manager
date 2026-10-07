@@ -60,15 +60,44 @@ test("subscription names recognize Chinese/English/full-width aliases, while unk
   assert.equal(matchBrand("https://attacker.test/a.svg"), undefined);
 });
 
+test("expanded local brands recognize common memberships and prefer more specific aliases", () => {
+  const samples = {
+    "Ｎｅｔｆｌｉｘ Premium": "netflix", "奈飞家庭组": "netflix", "Spotify 家庭会员": "spotify",
+    "YouTube Premium": "youtube", "YouTube Music Premium": "youtube-music", "油管音乐": "youtube-music",
+    "Apple Music": "apple-music", "Apple TV+": "apple-tv", "Google One 2TB": "google-one",
+    "OneDrive": "onedrive", "Microsoft 365 家庭版": "microsoft-office", "Office 365": "microsoft-office",
+    "Cursor Pro": "cursor", "Perplexity Pro": "perplexity", "Kimi Coding": "kimi", "通义千问": "qwen",
+    "豆包": "doubao", "SuperGrok": "grok", "Midjourney": "midjourney", "海螺AI": "minimax",
+    "Trae Pro": "trae", "Manus": "manus", "阿里云 ECS": "alibaba-cloud", "腾讯云": "tencent-cloud",
+    "PS Plus": "playstation", "XGPU": "xbox", "Nintendo Switch Online": "nintendo",
+  };
+  for (const [name, key] of Object.entries(samples)) assert.equal(matchBrand(name)?.key, key, name);
+  for (const name of ["", "   ", "我的 Netflix 账户", "javascript:alert(1)"]) {
+    // Only deliberate prefixes match; no substring or network lookups.
+    assert.equal(matchBrand(name), undefined, name);
+  }
+});
+
+test("every brand and alias is unique and resolves to the intended service", () => {
+  assert.equal(new Set(brands.map(brand => brand.key)).size, brands.length);
+  const aliases = new Set<string>();
+  for (const brand of brands) for (const alias of brand.aliases) {
+    const normalized = alias.normalize("NFKC").trim().toLowerCase().replace(/[\s._+\-]/g, "");
+    assert.ok(normalized && !aliases.has(normalized), alias);
+    aliases.add(normalized);
+    assert.equal(matchBrand(alias)?.key, brand.key, alias);
+  }
+});
+
 test("all matched icons exist locally and contain no script or external fetch references", async () => {
   for (const brand of brands) {
-    assert.match(brand.icon, /^\/brands\/[a-z-]+\.(svg|ico|png)$/);
+    assert.match(brand.icon, /^\/brands\/[a-z0-9-]+\.(svg|ico|png)$/);
     const file = await readFile(new URL("../../frontend/public" + brand.icon, import.meta.url));
     assert.ok(file.length > 100 && file.length < 200_000, brand.key);
     if (brand.icon.endsWith(".svg")) {
       const svg = file.toString("utf8");
       assert.match(svg, /^<svg/);
-      assert.doesNotMatch(svg, /<script|\bon\w+=|(?:href|xlink:href)=["'](?:https?:|\/\/)/i);
+      assert.doesNotMatch(svg, /<script|<foreignObject|<!DOCTYPE|\bon\w+=|(?:href|xlink:href)=["'](?:https?:|\/\/|javascript:)|@import|url\(\s*["']?https?:/i);
     } else if (brand.icon.endsWith(".png")) {
       assert.equal(file.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", brand.key);
       assert.ok(file.readUInt32BE(16) >= 72 && file.readUInt32BE(20) >= 72, "Retina-sized source");
