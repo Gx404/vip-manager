@@ -59,6 +59,16 @@ button, input, textarea, select { font-family: inherit; }
 .cost-list li > span > small, .cost-list b small, .history-entry small, .history-dates, .backup-preview { font-size: .8125rem; color: #50695a; }
 .renewal-action small { color: #6e5934; font-size: .8125rem; }
 .reminder-list small { color: #50695a; }
+.email-reminders { border: 1px solid var(--border, #dfe6e4); border-radius: 12px; padding: 14px; margin-bottom: 16px; }
+.email-reminder-heading, .email-reminder-heading strong, .email-reminder-controls { display: flex; align-items: center; gap: 8px; }
+.email-reminder-controls { flex-wrap: wrap; margin-top: 12px; }
+.email-reminder-controls > span { flex: 1 1 180px; font-size: 14px; overflow-wrap: anywhere; }
+.email-results { margin-top: 12px; font-size: 13px; }
+.email-results summary { cursor: pointer; }
+.email-results ul { list-style: none; padding: 0; }
+.email-results li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 0; }
+.email-results li small { flex-basis: 100%; color: #a84231; }
+.email-results time { color: #52616e; }
 .topbar.guest-topbar { flex-direction: row; align-items: center; }
 .guest-topbar .header-actions { width: auto; }
 @media (max-width: 590px) {

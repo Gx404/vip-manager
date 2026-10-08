@@ -9,6 +9,7 @@ import { openDatabase } from "../backend/src/database.ts";
 import { createApp } from "../backend/src/app.ts";
 import { bootstrapAdmin } from "../backend/src/auth.ts";
 import { SubscriptionService } from "../backend/src/subscriptions.ts";
+import { EmailNotificationService } from "../backend/src/notifications.ts";
 import { dateKey, shiftDate } from "../shared/subscriptions.ts";
 import { brands } from "../shared/brands.ts";
 
@@ -23,7 +24,10 @@ try {
   const service=new SubscriptionService(db,config.timeZone), today=dateKey();
   const names=["ChatGPT Plus","百度网盘","淘宝88VIP","哔哩哔哩大会员","iCloud+","自定义测试"];
   for (const [index,name] of names.entries()) service.execute(1,{action:"create",item:{id:randomUUID(),name,plan:"测试套餐",category:["AI 工具","云盘存储","购物会员","影音娱乐","云盘存储","其他服务"][index],amount:20+index,cycle:"monthly",customDays:30,startDate:shiftDate(today,-20),endDate:shiftDate(today,2+index),reminderDays:7,autoRenew:index===4,note:"isolated browser fixture",color:"#269979",version:0,...(index===0?{currency:"USD",purchaseDate:"2024-05-05",fxRateToCny:7.2352,fxRateDate:"2024-05-03",fxRateSource:"frankfurter"}:{})}});
-  const api=createApp(db,config), web=express();
+  const emailConfig={ ...config,email:{ ...config.email,username:'owner@qq.com',password:'browser-test-only',from:'owner@qq.com',to:'owner@qq.com' } };
+  let emailCount=0;
+  const notifications=new EmailNotificationService(db,emailConfig,{send:async()=>{emailCount++;}});
+  const api=createApp(db,config,notifications), web=express();
   web.use((req,res,next)=>req.path.startsWith("/api/")?api(req,res,next):next());
   web.use(express.static(fileURLToPath(new URL("../frontend/dist/",import.meta.url))));
   server=web.listen(0,"127.0.0.1");
@@ -48,6 +52,7 @@ try {
   await page.locator('.spending-summary').click();await assertGuest();
   assert.equal((await context.request.get(config.publicOrigin+'/api/backup')).status(),401);
   assert.equal((await context.request.get(config.publicOrigin+'/api/subscriptions/history')).status(),401);
+  assert.equal((await context.request.get(config.publicOrigin+'/api/notifications/status')).status(),401);
   for (const width of [320,390,1440]) {
     await page.setViewportSize({width,height:1000});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -147,6 +152,17 @@ try {
   await page.getByText("已撤销本次续费记录",{exact:true}).waitFor();
   assert.equal((await records()).find(item=>item.id===original.id).endDate,original.endDate);
   await page.getByRole("button",{name:/提醒中心/}).click();
+  await page.getByRole('button',{name:'发送测试邮件',exact:true}).click();
+  await page.getByText('测试邮件已提交',{exact:true}).waitFor();
+  assert.equal(emailCount,1);
+  assert.equal(await page.getByRole('button',{name:/秒后可重试/}).isDisabled(),true);
+  await page.getByText('最近发送记录',{exact:true}).click();
+  await page.getByText('测试邮件 · 已提交',{exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:output+'/email-reminders-mobile.png'});
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('PASS private email status, simulated test send, cooldown, recent delivery and mobile layout');
   assert.equal(await page.getByRole("dialog").getByRole("button",{name:/快捷续费/}).count(),0);
   await page.getByRole("button",{name:"管理百度网盘",exact:true}).click();
   await page.getByRole("button",{name:"快捷续费",exact:true}).click();

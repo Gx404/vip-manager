@@ -27,6 +27,7 @@ import { ReportPage } from "@/components/report-page";
 import { CurrencyFields, type CurrencyDraft } from "@/components/currency-fields";
 import { DashboardOverview } from "@/components/dashboard-overview";
 import { CompactDialogHeader, ContextHelp } from "@/components/context-help";
+import { EmailReminders } from "@/components/email-reminders";
 
 const categoryIcons = { "影音娱乐": Music2, "购物会员": ShoppingBag, "AI 工具": Sparkles, "云盘存储": Cloud, "效率办公": BriefcaseBusiness, "生活服务": Coffee, "游戏会员": Gamepad2, "学习教育": GraduationCap, "网络服务": Globe, "其他服务": LayoutGrid };
 const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
@@ -432,6 +433,7 @@ export default function Dashboard() {
 
     <Dialog open={!authRequired && showReminders} onOpenChange={setShowReminders}><DialogContent className="membership-dialog">
       <CompactDialogHeader title="到期提醒" helpLabel="到期提醒说明" help={<><p>按每条订阅的提前提醒设置展示，打开对应订阅后可管理或记录续费。</p><p>网页内提醒只在打开页面时显示。导出 .ics 并导入日历后，可由日历应用通知；续费后需重新导出。</p></>} />
+      {!authRequired && showReminders && <EmailReminders />}
       <div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · {money(item.amount, item.currency)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button className="button light" aria-label={`管理${item.name}`} onClick={() => { setShowReminders(false); edit(item); }}>管理</button><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => void downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂无到期提醒。</p>}</div>
     </DialogContent></Dialog>
 

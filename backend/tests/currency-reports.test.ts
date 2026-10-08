@@ -81,7 +81,7 @@ test("deployed v4 migration preserves original AUD/CNY amounts, dates, user hash
     assert.equal(item.purchaseDate,"2026-09-20"); assert.equal(item.fxRateDate,"2026-09-18");
     assert.equal(db.prepare("SELECT amount_cents FROM subscriptions").get()!.amount_cents,11922);
     assert.equal(db.prepare("SELECT password_hash FROM users").get()!.password_hash,"hash-must-stay");
-    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,5);
+    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,6);
     assert.equal(db.prepare("PRAGMA integrity_check").get()!.integrity_check,"ok");
   } finally { db.close(); }
 });

@@ -11,6 +11,8 @@
 | POST | /api/auth/login | JSON：username、password |
 | GET | /api/auth/session | 当前用户 |
 | POST | /api/auth/logout | JSON：{}，销毁会话 |
+| GET | /api/notifications/status | 主管理员查看启用状态、脱敏邮箱、时区/时间、测试冷却和最近 5 条结果；不返回授权码 |
+| POST | /api/notifications/test | 空 JSON `{}`；只向配置地址发送，返回 `accepted:true` 表示 SMTP 接受；限流每分钟一次（429 + Retry-After），未配置 503，失败或结果不明 502 |
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
 | GET | /api/subscriptions/history | 私人流水；可选 subscriptionId、offset（默认 0）、limit（默认 50，最大 100）；返回 logs、total |
@@ -32,7 +34,7 @@
 
 会员记录字段：id、name、plan、category、amount、currency、purchaseDate、fxRateToCny、fxRateDate、fxRateSource、cycle、customDays、startDate、endDate、reminderDays、autoRenew、note、color、version。
 
-**v5 的 amount 是原币金额，不再是旧 v4 的人民币折算值**，最多两位小数，范围 0–10,000,000。currency 使用 [币种清单](../shared/currency.ts) 中的 30 个代码；fxRateToCny 为每单位原币对应的人民币数（大于 0、不超过 100,000）。外币必须提供完整的购买日期、报价日期、汇率与来源；fxRateDate 不得晚于 purchaseDate。fxRateSource 为 manual 或 frankfurter。省略币种的旧记录按 CNY 处理，人民币汇率只能为 1。日期为 YYYY-MM-DD，1900–2200 年，endDate 必须大于 startDate。
+**v5 及以后的 amount 是原币金额，不再是旧 v4 的人民币折算值**，最多两位小数，范围 0–10,000,000。currency 使用 [币种清单](../shared/currency.ts) 中的 30 个代码；fxRateToCny 为每单位原币对应的人民币数（大于 0、不超过 100,000）。外币必须提供完整的购买日期、报价日期、汇率与来源；fxRateDate 不得晚于 purchaseDate。fxRateSource 为 manual 或 frankfurter。省略币种的旧记录按 CNY 处理，人民币汇率只能为 1。日期为 YYYY-MM-DD，1900–2200 年，endDate 必须大于 startDate。006 迁移增加邮件提醒发送去重与失败重试记录，不改变会员账期数据。
 
 兼容旧 v4 请求/备份的 billingAmount、billingCurrency、exchangeRate、exchangeRateDate：以 billingAmount 恢复原币数值，不再次换算旧 amount。混用两套币种字段会拒绝。数据库 original_amount_cents 保存原币整数分，amount_cents 保留旧人民币折算整数分；业务读取使用原币与快照。旧版客户端应随服务端一同更新，不应将新版 amount 当作人民币。
 

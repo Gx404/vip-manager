@@ -6,6 +6,7 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     init: true
+    stop_grace_period: 30s
     environment:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Please set PUBLIC_ORIGIN in .env}
       PUBLIC_DASHBOARD: ${PUBLIC_DASHBOARD:-false}
@@ -15,6 +16,17 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
       TRUST_PROXY: "true"
       TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:-loopback,linklocal,uniquelocal}
+      EMAIL_CONFIG_FILE: /app/backend/data/email-settings.json
+      EMAIL_NOTIFICATIONS: ${EMAIL_NOTIFICATIONS:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.qq.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_TO: ${EMAIL_TO:-}
+      EMAIL_REMINDER_HOUR: ${EMAIL_REMINDER_HOUR:-9}
+      EMAIL_REMINDER_MINUTE: ${EMAIL_REMINDER_MINUTE:-0}
     volumes:
       - membership_data:/app/backend/data
     expose:

@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { openDatabase } from "../src/database.ts";
+import { readConfig } from "../src/config.ts";
+import { bootstrapAdmin } from "../src/auth.ts";
+import { createApp } from "../src/app.ts";
+import { EmailNotificationService } from "../src/notifications.ts";
+
+test("邮件接口要求登录、来源校验、空参数和持久化测试限流", async t => {
+  const config = readConfig({ PUBLIC_ORIGIN:"http://frontend.test", COOKIE_SECURE:"false", PUBLIC_DASHBOARD:"true", ADMIN_PASSWORD:"test-only-password", SMTP_USER:"owner@qq.com", SMTP_PASSWORD:"test-only-secret" });
+  const db = openDatabase(":memory:");
+  await bootstrapAdmin(db,config);
+  let sends = 0;
+  const service = new EmailNotificationService(db,config,{ send:async () => { sends++; } });
+  const server = createApp(db,config,service).listen(0,"127.0.0.1");
+  await new Promise<void>((resolve,reject) => { server.once("listening",resolve); server.once("error",reject); });
+  t.after(async () => { await new Promise<void>((resolve,reject) => server.close(error => error ? reject(error) : resolve())); db.close(); });
+  const address = server.address(); assert.ok(address && typeof address !== "string");
+  const url = "http://127.0.0.1:" + address.port;
+  const headers = { "Content-Type":"application/json", "X-Requested-With":"membership-dashboard", Origin:config.publicOrigin };
+  assert.equal((await fetch(url+"/api/notifications/status")).status,401);
+  assert.equal((await fetch(url+"/api/notifications/test",{ method:"POST",headers,body:"{}" })).status,401);
+  const login = await fetch(url+"/api/auth/login",{ method:"POST",headers,body:JSON.stringify({ username:"admin",password:config.adminPassword }) });
+  const cookie = login.headers.get("set-cookie")!.split(";")[0];
+  const post = (body:unknown, extra = {}) => fetch(url+"/api/notifications/test",{ method:"POST",headers:{ ...headers,Cookie:cookie,...extra },body:JSON.stringify(body) });
+  assert.equal((await post({}, { Origin:"https://other.test" })).status,403);
+  assert.equal((await post({ to:"other@example.com" })).status,400);
+  assert.equal((await post({})).status,200);
+  const limited = await post({}); assert.equal(limited.status,429); assert.ok(Number(limited.headers.get("Retry-After"))<=60);
+  assert.equal(sends,1);
+  const status = await (await fetch(url+"/api/notifications/status",{ headers:{ Cookie:cookie } })).text();
+  assert.ok(!status.includes("test-only-secret")); assert.ok(!status.includes("owner@qq.com")); assert.match(status,/ow\*\*\*@qq.com/);
+});
