@@ -75,6 +75,7 @@
 .history-dates b{display:block;color:#3d7f62;font-weight:500;margin-top:3px}
 .history-amount{color:#4c8870;white-space:nowrap}
 .history-amount em{display:block;color:#b27d4b;font-style:normal;font-size:.7rem;margin-top:3px}
+.history-delete.button{display:block;margin-top:6px;min-height:30px;padding:5px 10px;color:var(--destructive)}
 .history-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:14px;font-size:.75rem;color:#86928c}
 .history-pagination .button{min-height:33px;padding:6px 10px}
 .backup-actions{display:flex;gap:10px;flex-wrap:wrap}

@@ -16,6 +16,7 @@
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
 | GET | /api/subscriptions/history | 私人流水；可选 subscriptionId、offset（默认 0）、limit（默认 50，最大 100）；返回 logs、total |
+| POST | /api/subscriptions/history/delete | JSON：{ id }；仅删除当前用户已撤销（undoneAt 非空）的流水，返回 { id }；未撤销返回 409 / RENEWAL_NOT_UNDONE，不存在或不属于当前用户返回 404 |
 | GET | /api/exchange-rate | 需登录；currency 与 date 查询购买日到人民币历史汇率，不写入订阅 |
 | GET | /api/backup | 当前用户全量业务 JSON，带下载响应头，不含密码或会话 |
 | POST | /api/backup/preview | { backup }，完整校验并返回计数及 revision，不写入数据 |

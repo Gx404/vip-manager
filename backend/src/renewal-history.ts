@@ -20,7 +20,7 @@ export function renewalFromRow(row: Row): RenewalLog {
   };
 }
 
-/** Durable user-scoped ledger. Mutations run inside the subscription service's transaction. */
+/** User-scoped ledger; renewals are transactional and deletion requires an undone entry. */
 export class RenewalHistory {
   private db: DatabaseSync;
   constructor(db: DatabaseSync) { this.db = db; }
@@ -45,6 +45,16 @@ export class RenewalHistory {
 
   byRequest(owner: number, requestId: string): Row | undefined {
     return this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=? AND request_id=?").get(owner,requestId);
+  }
+
+  /** Delete only an already-undone entry owned by the caller, without changing the subscription. */
+  deleteUndone(owner: number, id: string): { id: string } {
+    const result = this.db.prepare("DELETE FROM subscription_renewal_logs WHERE user_id=? AND id=? AND undone_at IS NOT NULL").run(owner,id);
+    if (Number(result.changes) !== 1) {
+      this.get(owner,id);
+      throw new ApiError(409,"只有已撤销的续费流水可以删除。","RENEWAL_NOT_UNDONE");
+    }
+    return { id };
   }
 
   list(owner: number, subscriptionId?: string, offset = 0, limit = 50): HistoryPage {

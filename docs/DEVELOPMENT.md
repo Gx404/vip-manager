@@ -42,9 +42,12 @@
 ```sh
 npm run build
 node scripts/test-browser.mjs
+node scripts/test-history-deletion.mjs
 ```
 
 测试用内存数据库和随机生成的临时账号，不读取 .env，不访问正式服务，所有增删/导入仅针对内存测试数据。覆盖真实生产前端的日期联动、模板、详情内快捷续费/撤销及未保存保护、汇率查询/手填、流水、JSON 下载/合并/覆盖、两格总览和报表，以及 320/375/390/768 像素紧凑视图；截图保存在被忽略的 outputs/browser-tests。可以设置 PLAYWRIGHT_MODULE 指向已有 Playwright 的 index.mjs，BROWSER_CHANNEL=msedge 使用现有 Edge。默认 npm run check 无需 Playwright。
+
+`test-history-deletion.mjs` 单独验证未撤销流水没有删除入口、取消/失败保留记录、确认删除不改账期、删除末页最后一条后正确翻页，以及 320 像素布局；截图位于 `outputs/history-deletion-tests`。
 
 生产依赖可另行运行 npm audit --omit=dev；结果会随公告变化，不代表永久安全。
 

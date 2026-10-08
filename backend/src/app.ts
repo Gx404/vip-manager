@@ -118,6 +118,10 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
     const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);
     res.json(history.list(res.locals.user.id,query.subscriptionId,query.offset,query.limit));
   });
+  app.post("/api/subscriptions/history/delete", (req,res) => {
+    const input = z.object({ id:idSchema }).strict().parse(req.body);
+    res.json(history.deleteUndone(res.locals.user.id,input.id));
+  });
   app.get("/api/backup", (_req,res) => {
     res.set("Content-Disposition",'attachment; filename="vip-manager-backup.json"');
     res.json(backups.export(res.locals.user.id));
