@@ -3,35 +3,9 @@
 body { font-family: var(--font-sans); line-height: 1.55; }
 button, input, textarea, select { font-family: inherit; }
 .muted, .brand-caption { color: #607269; }
-.dashboard .summary-label { font-size: .9375rem; }
-.overview .summary-number { font-weight: 600; }
-.overview .summary-number span { color: #566b60; }
-.overview .spending-summary .summary-number span { color: #c9dfd3; }
-.spending-summary { display: flex; flex-direction: column; justify-content: space-between; }
-.spending-summary .summary-label { width: 100%; }
-.spending-summary .summary-number { margin: 12px 0 16px; }
-.spending-bottom { width: 100%; margin-top: auto; font-size: .8125rem; color: #c9dfd3; }
-.summary-link, .status-legend { font-size: .8125rem; }
-.status-legend { color: #526b5c; }
-.subscription-card .service-name h2, .subscription-row .row-service h2 { font-size: 1.0625rem; font-weight: 600; line-height: 1.5; }
-.subscription-card .service-name p, .subscription-row .row-service p { font-size: .8125rem; color: #596f63; }
-.subscription-card .small-label, .subscription-card .remaining-block .small-label { font-size: .8125rem; color: #53685d; }
-.subscription-card .expiry-date { font-size: .8125rem; color: #53685d; }
-.subscription-card .progress-caption { font-size: .8125rem; color: #53685d; }
-.card-tags { flex-wrap: wrap; }
-.card-status { font-size: .75rem; color: #3d7154; }
 .tag { font-size: .75rem; }
 .category-tag { color: #3f755d; }
 .cycle-tag { color: #58677c; }
-.subscription-card .card-metrics p { font-size: .9375rem; }
-.subscription-card .card-metrics small { font-size: .8125rem; color: #596f63; }
-.subscription-card .card-metrics .green { color: #176b50; }
-.section-caption .muted { font-size: .8125rem; color: #466152; }
-.dashboard .category-list [data-slot="tabs-trigger"] { color: #526c5d !important; }
-.dashboard .category-list [data-state="active"] { color: #fff !important; }
-.category-list [data-slot="tabs-trigger"] > span { color: #627668; font-size: .8125rem; }
-.row-amount, .row-date b { font-size: .875rem; }
-.row-amount small, .row-date time { font-size: .8125rem; color: #556d5e; }
 .page-footer { font-size: .8125rem; color: #607267; }
 .report-kpis span, .report-section h3, .report-bar-row, .report-list li { font-size: .875rem; color: #354e40; }
 .report-kpis small, .report-bar-row > span small, .report-bar-row b small, .report-list small, .report-fx small, .report-fx span { font-size: .8125rem; color: #566e5e; }
@@ -72,14 +46,7 @@ button, input, textarea, select { font-family: inherit; }
 .topbar.guest-topbar { flex-direction: row; align-items: center; }
 .guest-topbar .header-actions { width: auto; }
 @media (max-width: 590px) {
-  .overview .summary-label, .overview .summary-number span, .summary-link, .status-legend, .spending-bottom { font-size: .8125rem; }
-  .overview .summary-card { padding: 16px 12px; }
-  .overview .spending-summary .summary-number { margin: 14px 0; }
-  .header-actions .primary { font-size: .8125rem; }
-  .subscription-card .remaining-block { padding-bottom: 14px; }
-  .subscription-card .expiry-date { font-size: .8125rem; }
   .report-heading h2 { font-size: 1.125rem; }
   .report-heading .button { font-size: .8125rem; }
   .form-field input, .form-field select, .form-field textarea { font-size: 1rem; }
-  .row-amount small, .row-date time { font-size: .75rem; }
 }

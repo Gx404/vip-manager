@@ -69,7 +69,7 @@ try {
   assert.equal(await page.locator(".header-date").count(),0);
   assert.doesNotMatch(await page.locator(".header-actions").innerText(), /\d{4}\.\d{2}\.\d{2}/);
   assert.equal(await page.locator(".page-footer time").count(),1);
-  assert.ok(await page.locator(".overview-bars i").first().evaluate(element=>element.getBoundingClientRect().height>0));
+  assert.equal(await page.locator(".status-legend > span").count(),3);
   await page.getByRole("button",{name:"月均支出，查看摊算明细",exact:true}).click();
   await page.getByRole("heading",{name:"月均支出明细",exact:true}).waitFor();
   assert.equal(await page.locator('.help-tooltip').count(),0);
@@ -231,7 +231,7 @@ try {
   }
   await page.reload();await page.locator(".subscription-row").first().waitFor();
   await page.setViewportSize({width:390,height:900});
-  await page.getByTitle("大卡片视图").click();
+  await page.getByTitle("卡片视图").click();
   await page.screenshot({path:output+"/mobile-grid.png",fullPage:true});
   for (const width of [320,375,390,590,760,768,1024,1920]) {
     await page.setViewportSize({width,height:1000});
@@ -251,6 +251,59 @@ try {
   assert.match(await page.locator(".status-legend .expired").innerText(),/1/);
   await page.setViewportSize({width:1440,height:1000});
   await page.screenshot({path:output+"/desktop-states.png",fullPage:true});
+
+  // Equal percentages share colors across cycles; rounding to zero must not imply expiry.
+  const progressCases = [
+    {start:0,end:30,percent:100,color:"rgb(47, 158, 122)",label:""},
+    {start:-15,end:15,percent:50,color:"rgb(163, 183, 92)",label:""},
+    {start:-24,end:6,percent:20,color:"rgb(223, 152, 76)",label:"即将到期"},
+    {start:-30,end:0,percent:0,color:"rgb(211, 94, 98)",label:"今日到期"},
+    {start:-31,end:-1,percent:0,color:"rgb(211, 94, 98)",label:"已到期"},
+    {start:-729,end:1,percent:0,color:"rgb(211, 94, 98)",label:"即将到期"},
+  ];
+  const progressRecords=await records();
+  for (const [index,item] of progressRecords.entries()) {
+    const sample=progressCases[index];
+    service.execute(1,{action:"update",id:item.id,version:item.version,item:{...item,startDate:shiftDate(today,sample.start),endDate:shiftDate(today,sample.end),autoRenew:false,reminderDays:7}});
+  }
+  await page.reload();await page.locator('.subscription-card').first().waitFor();
+  await page.emulateMedia({reducedMotion:'reduce'});
+  for (const [index,item] of progressRecords.entries()) {
+    const sample=progressCases[index], card=page.getByRole('article',{name:item.name,exact:true});
+    const actual=await card.evaluate(el=>({percent:Number(el.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')),color:getComputedStyle(el.querySelector('[data-slot="progress-indicator"]')).backgroundColor,track:getComputedStyle(el.querySelector('.segments')).backgroundColor,number:getComputedStyle(el.querySelector('.remaining-number')).color,label:el.querySelector('.card-status')?.textContent??''}));
+    assert.equal(actual.percent,sample.percent);assert.equal(actual.color,sample.color);assert.equal(actual.label,sample.label);
+    assert.equal(actual.number,'rgb(34, 56, 46)');
+    if(sample.percent===0) assert.equal(actual.track,'rgb(246, 223, 225)');
+  }
+  for (const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:1000});
+    const layout=await page.locator('.subscription-card').evaluateAll(cards=>cards.map(card=>{
+      const label=card.querySelector('.card-metrics > span').getBoundingClientRect(), price=card.querySelector('.card-metrics p').getBoundingClientRect();
+      return {height:card.getBoundingClientRect().height,oneFeeLine:label.top<price.bottom&&price.top<label.bottom,contained:card.scrollWidth<=card.clientWidth};
+    }));
+    assert.ok(layout.every(card=>card.oneFeeLine&&card.contained),JSON.stringify({width,layout}));
+    if(width===1440) assert.ok(layout.every(card=>card.height>=240&&card.height<=290),JSON.stringify(layout));
+    await page.screenshot({path:output+`/compact-progress-${width}.png`,fullPage:width===1440});
+  }
+  console.log('PASS compact fee row, dark numbers, full/half/low/empty colors, due-today and rounded-zero expiry boundaries');
+
+  const longRecord=(await records()).find(item=>item.id===progressRecords[0].id);
+  const longName='超长会员名称'.repeat(10), longPlan='EnterprisePlan'.repeat(5);
+  service.execute(1,{action:'update',id:longRecord.id,version:longRecord.version,item:{...longRecord,name:longName,plan:longPlan,amount:9999999.99}});
+  await page.reload();await page.getByRole('heading',{name:longName,exact:true}).waitFor();
+  for (const width of [320,1024,1440]) {
+    await page.setViewportSize({width,height:1000});
+    const card=page.getByRole('article',{name:longName,exact:true});
+    assert.ok(await card.evaluate(el=>{
+      const box=el.getBoundingClientRect(), amount=el.querySelector('.card-metrics p').getBoundingClientRect(), action=el.querySelector('button').getBoundingClientRect();
+      return document.documentElement.scrollWidth<=innerWidth&&amount.left>=box.left&&amount.right<=box.right&&action.right<=box.right&&el.scrollWidth<=el.clientWidth;
+    }),`Long content overflow at ${width}`);
+  }
+  await page.getByRole('textbox',{name:'搜索订阅',exact:true}).fill(longName);
+  assert.equal(await page.locator('.subscription-card').count(),1);
+  await page.getByRole('textbox',{name:'搜索订阅',exact:true}).fill('');
+  assert.equal(await page.locator('.subscription-card').count(),6);
+  console.log('PASS maximum-length names, long plans, large foreign amounts and search');
 
   await page.getByRole('button',{name:'支出分析',exact:true}).click();
   await page.getByRole('button',{name:'退出',exact:true}).click();

@@ -1,28 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import {
   Bell, BriefcaseBusiness, Check, Cloud,
-  CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus,
+  Download, Info, LayoutGrid, Music2, Plus,
   Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe, History, Upload, List, BarChart3, LogOut,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { LoginDialog } from "@/components/login-dialog";
-import { ServiceLogo } from "@/components/service-logo";
 import { apiRequest, ApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { categories, cycles, dateKey, monthlyCostCny, remaining, renewDate, occupiedCategories, durationColor, periodPercentage, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
-import { currencyMeta, formatCurrency, money } from "../../../shared/currency.ts";
+import { categories, cycles, dateKey, monthlyCostCny, remaining, renewDate, occupiedCategories, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
+import { formatCurrency, money } from "../../../shared/currency.ts";
 import type { RenewalResult } from "../../../shared/renewals.ts";
 import { linkedEndDate, updateDraftPeriod, membershipTemplates, requestId, type MembershipTemplate } from "@/lib/dashboard-helpers";
 import { HistoryDialog } from "@/components/history-dialog";
 import { BackupDialog } from "@/components/backup-dialog";
 import { SubscriptionRow } from "@/components/subscription-row";
+import { SubscriptionCard } from "@/components/subscription-card";
 import { ReportPage } from "@/components/report-page";
 import { CurrencyFields, type CurrencyDraft } from "@/components/currency-fields";
 import { DashboardOverview } from "@/components/dashboard-overview";
@@ -30,7 +28,6 @@ import { CompactDialogHeader, ContextHelp } from "@/components/context-help";
 import { EmailReminders } from "@/components/email-reminders";
 
 const categoryIcons = { "影音娱乐": Music2, "购物会员": ShoppingBag, "AI 工具": Sparkles, "云盘存储": Cloud, "效率办公": BriefcaseBusiness, "生活服务": Coffee, "游戏会员": Gamepad2, "学习教育": GraduationCap, "网络服务": Globe, "其他服务": LayoutGrid };
-const statusNames = { healthy: "正常使用", soon: "即将到期", expired: "已到期" } as const;
 const currency = (n: number) => formatCurrency(n, "CNY");
 type Draft = Omit<Subscription, "amount" | "customDays" | "reminderDays" | keyof CurrencyDraft> & CurrencyDraft & { amount: string; customDays: string; reminderDays: string };
 type ConfirmAction = { kind: "delete"; item: Subscription } | null;
@@ -49,10 +46,6 @@ function toDraft(item: Subscription): Draft {
   return { ...item, amount: String(item.amount), customDays: String(item.customDays), reminderDays: String(item.reminderDays),
     currency: item.currency ?? "CNY", purchaseDate: item.purchaseDate ?? item.startDate, fxRateToCny: String(item.fxRateToCny ?? 1),
     fxRateDate: item.fxRateDate ?? item.purchaseDate ?? item.startDate, fxRateSource: item.fxRateSource ?? "manual" };
-}
-
-function Segments({ value, color, label }: { value: number; color: string; label: string }) {
-  return <Progress value={value} aria-label={label} aria-valuetext={label} title={label} className="segments" style={{ "--segment-color": color } as CSSProperties} />;
 }
 
 function escapeIcs(value: string) {
@@ -405,18 +398,14 @@ export default function Dashboard() {
       {!authRequired && reportOpen ? <ReportPage items={items} today={today} onBack={() => setReportOpen(false)} /> : <>
       <DashboardOverview items={items} today={today} monthly={monthly} canManage={!authRequired} onCosts={() => setShowCostBreakdown(true)} />
 
-      <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span></div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">月均费用从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select><div className="view-toggle" role="group" aria-label="视图切换"><button className={viewMode === "grid" ? "active" : ""} aria-pressed={viewMode === "grid"} title="大卡片视图" onClick={() => { setViewMode("grid"); try { localStorage.setItem("membership-view", "grid"); } catch { /* storage can be unavailable */ } }}><LayoutGrid size={15} /></button><button className={viewMode === "list" ? "active" : ""} aria-pressed={viewMode === "list"} title="紧凑列表视图" onClick={() => { setViewMode("list"); try { localStorage.setItem("membership-view", "list"); } catch { /* storage can be unavailable */ } }}><List size={15} /></button></div></div></div>
+      <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span></div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">月均费用从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select><div className="view-toggle" role="group" aria-label="视图切换"><button className={viewMode === "grid" ? "active" : ""} aria-pressed={viewMode === "grid"} title="卡片视图" onClick={() => { setViewMode("grid"); try { localStorage.setItem("membership-view", "grid"); } catch { /* storage can be unavailable */ } }}><LayoutGrid size={15} /></button><button className={viewMode === "list" ? "active" : ""} aria-pressed={viewMode === "list"} title="紧凑列表视图" onClick={() => { setViewMode("list"); try { localStorage.setItem("membership-view", "list"); } catch { /* storage can be unavailable */ } }}><List size={15} /></button></div></div></div>
       <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{visibleCategories.map(({ category: c, count }) => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{count}</span></TabsTrigger>; })}</TabsList></Tabs>
 
       <section className={`subscription-grid ${viewMode === "list" ? "compact-view" : ""}`} aria-label="会员列表">
         {loading && <div className="loading-state"><span className="loading-pulse" />正在读取你的会员清单…</div>}
-        {!loading && filtered.map(item => { const status = stateOf(item, today); const days = remaining(item, today); const progress = periodPercentage(item, today); const color = durationColor(days); if (viewMode === "list") return <SubscriptionRow key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />; return <article key={item.id} className={`subscription-card ${status}`} style={{ "--time-color": color, "--time-tint": `${color}0d` } as CSSProperties}>
-          <div className="card-heading"><ServiceLogo name={item.name} color={item.color} /><div className="service-name"><h2>{item.name}</h2><p>{item.plan || "会员订阅"}</p></div>{!authRequired && <div className="card-actions"><button className="icon-button" aria-label={`编辑${item.name}`} onClick={() => edit(item)}><Ellipsis size={20} /></button></div>}</div>
-          <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
-          <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>
-          <div className="progress-caption"><span>本期剩余</span><span>{progress}%</span></div><Segments value={progress} color={color} label={`${item.name}：本期剩余 ${progress}%，${days < 0 ? "已过期" : `距到期 ${days} 天`}`} />
-          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p title={item.currency ?? "CNY"}>{currencyMeta(item.currency).symbol} <strong>{formatCurrency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div></div>
-        </article>; })}
+        {!loading && filtered.map(item => viewMode === "list"
+          ? <SubscriptionRow key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />
+          : <SubscriptionCard key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />)}
         {!loading && !syncError && filtered.length === 0 && <div className="empty-state"><LayoutGrid size={32} /><h2>{items.length ? "没有找到符合条件的订阅" : authRequired ? publicDashboard ? "还没有会员记录" : "登录查看你的会员" : "把你的第一个会员加进来"}</h2><button className="button primary" onClick={() => items.length ? (setCategory("全部"), setQuery("")) : edit()}>{items.length ? "清除筛选" : authRequired ? "管理员登录" : "添加订阅"}</button></div>}
       </section>
       </>}

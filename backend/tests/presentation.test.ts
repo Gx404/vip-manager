@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { occupiedCategories, dueWithin, durationColor, periodPercentage } from "../../shared/presentation.ts";
+import { occupiedCategories, dueWithin, progressColor, periodPercentage } from "../../shared/presentation.ts";
 import { monthlyCost, type Subscription } from "../../shared/subscriptions.ts";
 import { brands, matchBrand } from "../../shared/brands.ts";
 
@@ -42,13 +42,17 @@ test("monthly budget amortizes each billing cycle independently of auto-renewal"
   assert.equal(monthlyCost({ ...record, amount: 0 }), 0);
 });
 
-test("duration colors change smoothly with actual days and use safe bounds", () => {
-  const colors = [0, 1, 3, 7, 14, 30, 90, 180, 365, 730].map(durationColor);
-  assert.equal(new Set(colors).size, colors.length);
-  assert.ok(colors.every(color => /^#[a-f0-9]{6}$/.test(color)));
-  assert.equal(durationColor(-1), durationColor(0)); assert.equal(durationColor(Infinity), durationColor(0));
-  assert.equal(periodPercentage({ startDate: "2026-09-01", endDate: "2026-10-01" }, "2026-09-16"), 50);
-  assert.equal(periodPercentage({ startDate: "2026-09-01", endDate: "2026-10-01" }, "2026-10-02"), 0);
+test("progress colors run from empty red to full teal, interpolate and clamp safely", () => {
+  assert.equal(progressColor(0), "#d35e62");
+  assert.equal(progressColor(10), "#d97b57");
+  assert.equal(progressColor(20), "#df984c");
+  assert.equal(progressColor(50), "#a3b75c");
+  assert.equal(progressColor(100), "#2f9e7a");
+  for (const value of [-1, NaN, Infinity]) assert.equal(progressColor(value), progressColor(0));
+  assert.equal(progressColor(150), progressColor(100));
+  const monthly = periodPercentage(record, "2026-09-16");
+  const yearly = periodPercentage({ startDate: "2026-01-01", endDate: "2027-01-01" }, "2026-07-02");
+  assert.equal(progressColor(monthly), progressColor(yearly), "equivalent fractions use the same color across billing cycles");
 });
 
 test("subscription names recognize Chinese/English/full-width aliases, while unknown services fall back", () => {

@@ -13,24 +13,23 @@ export function dueWithin(item: Subscription, today: string, limit: number): boo
   return days >= 0 && days <= limit;
 }
 
-const timeStops = [
-  [0, "#d35e62"], [3, "#de7857"], [7, "#df984c"], [14, "#c9ab4d"],
-  [30, "#80af70"], [90, "#3fa890"], [180, "#459fbd"], [365, "#6c8fcd"], [730, "#8880c8"],
+const progressStops = [
+  [0, "#d35e62"], [20, "#df984c"], [50, "#a3b75c"], [100, "#2f9e7a"],
 ] as const;
 
-/** Interpolate by absolute remaining days: urgent red/orange, medium green, distant blue/violet. */
-export function durationColor(days: number): string {
-  if (!Number.isFinite(days) || days <= 0) return timeStops[0][1];
-  for (let index = 1; index < timeStops.length; index++) {
-    const [rightDay, right] = timeStops[index];
-    const [leftDay, left] = timeStops[index - 1];
-    if (days <= rightDay) {
-      const fraction = (days - leftDay) / (rightDay - leftDay);
+/** One solid bar color follows the same remaining percentage as its length, for every billing cycle. */
+export function progressColor(percentage: number): string {
+  if (!Number.isFinite(percentage) || percentage <= 0) return progressStops[0][1];
+  for (let index = 1; index < progressStops.length; index++) {
+    const [rightPercent, right] = progressStops[index];
+    const [leftPercent, left] = progressStops[index - 1];
+    if (percentage <= rightPercent) {
+      const fraction = (percentage - leftPercent) / (rightPercent - leftPercent);
       const channels = [1, 3, 5].map(offset => Math.round(parseInt(left.slice(offset, offset + 2), 16) * (1 - fraction) + parseInt(right.slice(offset, offset + 2), 16) * fraction));
       return "#" + channels.map(channel => channel.toString(16).padStart(2, "0")).join("");
     }
   }
-  return timeStops[timeStops.length - 1][1];
+  return progressStops[progressStops.length - 1][1];
 }
 
 /** Return the entered period's remaining percentage, clamped to 0–100 for both label and bar. */

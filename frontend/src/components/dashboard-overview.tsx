@@ -4,7 +4,7 @@ import { formatCurrency } from "../../../shared/currency.ts";
 
 type Props = { items: Subscription[]; today: string; monthly: number; canManage: boolean; onCosts: () => void };
 
-/** Keep the two overview tiles: subscription health and the amortized monthly budget. */
+/** A compact overview keeps subscription health and the amortized monthly budget together. */
 export function DashboardOverview({ items, today, monthly, canManage, onCosts }: Props) {
   const activeCount = items.filter(item => remaining(item, today) >= 0).length;
   const counts = { healthy: 0, soon: 0, expired: 0 };
@@ -15,7 +15,6 @@ export function DashboardOverview({ items, today, monthly, canManage, onCosts }:
     <div className="summary-card subscription-summary">
       <div className="summary-label">有效订阅<LayoutGrid aria-hidden="true" /></div>
       <div className="summary-number">{activeCount}<span>/ {items.length} 项</span></div>
-      <div className="overview-bars" aria-hidden="true">{items.map(item => <i key={item.id} className={stateOf(item, today)} />)}</div>
       <div className="status-legend" aria-label="订阅状态分布">
         <span className="healthy">正常 <b>{counts.healthy}</b></span>
         <span className="soon" title="按各订阅的提前提醒设置">临期 <b>{counts.soon}</b></span>
