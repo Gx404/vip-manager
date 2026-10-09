@@ -63,7 +63,8 @@
 .subscription-card .progress-caption { color: #718378; font-size: .7rem; }
 .subscription-card .progress-caption span:last-child { color: #3c5748; font-weight: 600; font-variant-numeric: tabular-nums; }
 .subscription-card .segments { height: 6px; }
-.subscription-card .card-metrics { margin-top: 20px; padding-top: 18px; border-top: 1px solid #edf1ee; }
+.subscription-card .card-metrics { grid-template-columns: 1fr; margin-top: 20px; padding-top: 18px; border-top: 1px solid #edf1ee; }
+.subscription-card .card-metrics > div:last-child { padding-left: 0; border-left: 0; }
 .subscription-card .card-metrics p { font-size: .85rem; }
 .subscription-card .card-metrics strong { font-size: 1.15rem; font-weight: 600; letter-spacing: -.025em; }
 .subscription-card .icon-button:hover, .subscription-row .icon-button:hover { background: #eaf1ed; color: #216a4f; }

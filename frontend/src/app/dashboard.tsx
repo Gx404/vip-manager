@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   Bell, BriefcaseBusiness, Check, Cloud,
-  CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus, RotateCw,
+  CreditCard, Download, Ellipsis, Info, LayoutGrid, Music2, Plus,
   Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe, History, Upload, List, BarChart3, LogOut,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -415,7 +415,7 @@ export default function Dashboard() {
           <div className="card-tags"><span className="tag category-tag">{item.category}</span><span className="tag cycle-tag">{item.cycle === "custom" ? `${item.customDays} 天` : cycles[item.cycle]}</span><span className={`card-status ${status}`}>{statusNames[status]}</span></div>
           <div className="remaining-block"><div className="small-label">{days < 0 ? "已过期" : "距离到期还有"}</div><div className="remaining-number" style={{ color }}>{Math.abs(days)}<span>天</span></div><div className="expiry-date">{item.endDate.replaceAll("-", ".")} 到期</div></div>
           <div className="progress-caption"><span>本期剩余</span><span>{progress}%</span></div><Segments value={progress} color={color} label={`${item.name}：本期剩余 ${progress}%，${days < 0 ? "已过期" : `距到期 ${days} 天`}`} />
-          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p title={item.currency ?? "CNY"}>{currencyMeta(item.currency).symbol} <strong>{formatCurrency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div><div><span className="small-label"><RotateCw size={14} />续费方式</span><p className={item.autoRenew ? "green" : ""} title={item.autoRenew ? "到期日自动进入下一期，仅更新看板日期，不实际扣款" : "续费后请手动更新记录"}>{item.autoRenew ? "自动续费" : "手动续费"}</p></div></div>
+          <div className="card-metrics"><div><span className="small-label"><CreditCard size={14} />续费金额</span><p title={item.currency ?? "CNY"}>{currencyMeta(item.currency).symbol} <strong>{formatCurrency(item.amount)}</strong><small>/{item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p></div></div>
         </article>; })}
         {!loading && !syncError && filtered.length === 0 && <div className="empty-state"><LayoutGrid size={32} /><h2>{items.length ? "没有找到符合条件的订阅" : authRequired ? publicDashboard ? "还没有会员记录" : "登录查看你的会员" : "把你的第一个会员加进来"}</h2><button className="button primary" onClick={() => items.length ? (setCategory("全部"), setQuery("")) : edit()}>{items.length ? "清除筛选" : authRequired ? "管理员登录" : "添加订阅"}</button></div>}
       </section>
