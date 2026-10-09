@@ -1,6 +1,12 @@
 /** Shared subscription data and timezone-safe date-only arithmetic. */
 import { amountInCny, type CurrencySnapshot } from "./currency.ts";
-export const categories = ["影音娱乐", "购物会员", "AI 工具", "云盘存储", "效率办公", "生活服务", "游戏会员", "学习教育", "网络服务", "其他服务"] as const;
+export const categories = ["影音娱乐", "购物电商", "AI 工具", "云存储", "办公效率", "设计与创作", "云服务与网络", "游戏会员", "学习教育", "生活服务", "其他服务"] as const;
+
+/** Accept older API clients and backups without leaving obsolete category names in storage. */
+export function normalizeCategory(value: unknown): unknown {
+  const aliases: Record<string, string> = { "购物会员": "购物电商", "云盘存储": "云存储", "效率办公": "办公效率", "网络服务": "云服务与网络" };
+  return typeof value === "string" && Object.hasOwn(aliases, value) ? aliases[value] : value;
+}
 export const cycles = { monthly: "月付", quarterly: "季付", yearly: "年付", custom: "自定义" } as const;
 export type Subscription = CurrencySnapshot & {
   id: string; name: string; plan: string; category: string; amount: number;

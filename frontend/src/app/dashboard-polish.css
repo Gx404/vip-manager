@@ -82,6 +82,9 @@
 .subscription-row.expired { border-left: 3px solid #cf8790; }
 .row-amount, .row-date b { color: #22382e; font-size: .875rem; }
 .row-amount small, .row-date time { color: #63766b; font-size: .8125rem; }
+.currency-amount { display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 5px; max-width: 100%; vertical-align: baseline; font-variant-numeric: tabular-nums; }
+.currency-code { color: #41594d; font-family: var(--font-sans); font-size: .8125rem; font-weight: 600; letter-spacing: .025em; white-space: nowrap; }
+.currency-value { min-width: 0; font-weight: 650; }
 
 @media (max-width: 1180px) {
   .header-actions { gap: 6px; }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { categories } from "../../shared/subscriptions.ts";
+import { categories, normalizeCategory } from "../../shared/subscriptions.ts";
 import { currencyCodes, type CurrencySnapshot } from "../../shared/currency.ts";
 import { ApiError } from "./errors.ts";
 
@@ -45,7 +45,7 @@ export const subscriptionObject = z.object({
   id: idSchema,
   name: z.string().trim().min(1,"请填写会员名称。").max(60),
   plan: z.string().trim().max(80),
-  category: z.enum(categories),
+  category: z.preprocess(normalizeCategory, z.enum(categories)),
   amount: z.number().finite().min(0).max(10_000_000).refine(n => Math.abs(Math.round(n * 100) - n * 100) < 0.00001, "金额最多保留两位小数。"),
   ...currencyFields,
   cycle: z.enum(["monthly","quarterly","yearly","custom"]),

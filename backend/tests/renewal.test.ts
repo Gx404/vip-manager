@@ -125,7 +125,7 @@ test("v1 migration preserves records, and anchors survive database reopen", asyn
   } finally { legacy.close(); }
   let db = openDatabase(filename);
   try {
-    assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 6);
+    assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 7);
     let service = new SubscriptionService(db, "Asia/Shanghai");
     assert.equal(service.list(1).items[0].endDate, "2026-02-28");
     assert.equal(service.advanceAutomaticRenewals(at("2026-02-28")), 1);

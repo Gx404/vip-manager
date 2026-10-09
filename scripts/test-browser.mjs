@@ -12,6 +12,7 @@ import { SubscriptionService } from "../backend/src/subscriptions.ts";
 import { EmailNotificationService } from "../backend/src/notifications.ts";
 import { dateKey, shiftDate } from "../shared/subscriptions.ts";
 import { brands } from "../shared/brands.ts";
+import { categories } from "../shared/subscriptions.ts";
 
 const playwright = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : "playwright");
 const config = readConfig({ PUBLIC_ORIGIN:"http://127.0.0.1", COOKIE_SECURE:"false", PUBLIC_DASHBOARD:"true", ADMIN_USERNAME:"browser-test", ADMIN_PASSWORD:randomUUID() });
@@ -56,6 +57,15 @@ try {
   for (const width of [320,390,1440]) {
     await page.setViewportSize({width,height:1000});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    const amount=page.getByRole('article',{name:'ChatGPT Plus',exact:true}).locator('.currency-amount');
+    assert.equal((await amount.innerText()).replace(/\s+/g,' '),'USD 20.00');
+    assert.equal(await amount.getAttribute('title'),'美元 · USD');
+    assert.ok(await amount.locator('.currency-code').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=13));
+    assert.ok(await amount.evaluate(el=>{
+      const code=el.querySelector('.currency-code').getBoundingClientRect(), value=el.querySelector('.currency-value').getBoundingClientRect();
+      return code.right<=value.left && code.top<value.bottom && value.top<code.bottom;
+    }),`Currency and amount should share one line at ${width}`);
+    assert.deepEqual(await page.locator('.subscription-card .currency-code').allTextContents(),['USD','CNY','CNY','CNY','CNY','CNY']);
     await page.screenshot({path:output+`/guest-${width}.png`,fullPage:width===1440});
   }
   await page.getByRole('button',{name:'管理员登录',exact:true}).click();
@@ -114,7 +124,8 @@ try {
   await page.getByLabel("本期开始日期").fill("2026-02-01");
   await page.getByRole("button",{name:"淘宝88VIP",exact:true}).click();
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2026-05-12");
-  assert.equal(await page.getByLabel("分类",{exact:true}).inputValue(),"购物会员");
+  assert.equal(await page.getByLabel("分类",{exact:true}).inputValue(),"购物电商");
+  assert.deepEqual(await page.getByLabel("分类",{exact:true}).locator('option').allTextContents(),categories);
   assert.equal(await page.getByLabel("续费周期",{exact:true}).inputValue(),"yearly");
   await page.getByRole("button",{name:"重新按开始日期和周期计算"}).click();
   assert.equal(await page.getByLabel("本期到期日期").inputValue(),"2027-02-01");
@@ -326,7 +337,7 @@ try {
     document.body.replaceChildren();document.body.style.cssText="margin:24px;background:#f4f6f5;display:grid;grid-template-columns:repeat(6,1fr);gap:12px;font:13px sans-serif";
     for (const brand of entries) {
       const tile=document.createElement("div");tile.style.cssText="background:white;padding:16px;display:grid;gap:8px;justify-items:center;border-radius:10px";
-      const img=document.createElement("img");img.src=brand.icon;img.width=36;img.height=36;img.style.objectFit="contain";
+      const img=document.createElement("img");img.src=brand.icon;img.width=36;img.height=36;img.style.cssText="width:36px;height:36px;object-fit:contain";
       const label=document.createElement("span");label.textContent=brand.label;tile.append(img,label);document.body.append(tile);
     }
   },brands);

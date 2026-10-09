@@ -29,7 +29,9 @@ test("30 currencies, frozen conversion and source-currency labels are unambiguou
   assert.equal(currencyCatalog.length, 30);
   assert.equal(new Set(currencyCatalog.map(item => item.code)).size, 30);
   assert.equal(monthlyCostCny(record({ ...fx, cycle: "yearly", amount: 120 })), 72.352);
-  assert.match(money(25, "AUD"), /A\$/); assert.match(money(25,"HKD"), /HK\$/);
+  for (const { code } of currencyCatalog) {
+    assert.equal(money(25, code), `${code === "CNY" ? "¥" : code + " "}25.00`);
+  }
 });
 test("currency snapshots survive editing, manual/automatic renewals, undo and JSON v2", t => {
   const { db,service,history,backups } = setup(); t.after(() => db.close());
@@ -81,7 +83,7 @@ test("deployed v4 migration preserves original AUD/CNY amounts, dates, user hash
     assert.equal(item.purchaseDate,"2026-09-20"); assert.equal(item.fxRateDate,"2026-09-18");
     assert.equal(db.prepare("SELECT amount_cents FROM subscriptions").get()!.amount_cents,11922);
     assert.equal(db.prepare("SELECT password_hash FROM users").get()!.password_hash,"hash-must-stay");
-    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,6);
+    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,7);
     assert.equal(db.prepare("PRAGMA integrity_check").get()!.integrity_check,"ok");
   } finally { db.close(); }
 });
@@ -106,7 +108,7 @@ test("lookup failures, zero/mismatched/current/stale rates never become valid hi
   assert.equal((await rates.lookup({currency:"USD",date:"2024-05-05"})).rate,7.2352);
 });
 test("reports reconcile categories, currencies, cycles and renewal modes, excluding expired records", () => {
-  const records=[record({...fx,amount:10}),record({category:"云盘存储",cycle:"yearly",amount:120}),record({amount:999,endDate:"2026-08-01",startDate:"2026-07-01"}),record({amount:0,autoRenew:true})];
+  const records=[record({...fx,amount:10}),record({category:"云存储",cycle:"yearly",amount:120}),record({amount:999,endDate:"2026-08-01",startDate:"2026-07-01"}),record({amount:0,autoRenew:true})];
   const result=spendingReport(records,"2026-09-30");
   assert.equal(result.expired,1); assert.equal(result.active.length,3);
   assert.equal(result.monthly,82.352); assert.equal(result.annual,result.monthly*12);

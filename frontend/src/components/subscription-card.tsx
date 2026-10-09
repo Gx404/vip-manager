@@ -3,7 +3,7 @@ import { Ellipsis } from "lucide-react";
 import { ServiceLogo } from "@/components/service-logo";
 import { Progress } from "@/components/ui/progress";
 import { cycles, periodPercentage, progressColor, remaining, stateOf, type Subscription } from "@/lib/subscriptions";
-import { currencyMeta, formatCurrency } from "../../../shared/currency.ts";
+import { CurrencyAmount } from "@/components/currency-amount";
 
 type Props = { item: Subscription; today: string; canManage: boolean; onEdit: () => void };
 
@@ -33,7 +33,7 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
     <Progress value={progress} aria-label={progressLabel} aria-valuetext={progressLabel} title={progressLabel} className={`segments${progress === 0 ? " is-empty" : ""}`} style={{ "--segment-color": progressColor(progress) } as CSSProperties} />
     <div className="card-metrics">
       <span className="small-label">续费金额</span>
-      <p title={item.currency ?? "CNY"}>{currencyMeta(item.currency).symbol}<strong>{formatCurrency(item.amount)}</strong><small> / {item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p>
+      <p><CurrencyAmount amount={item.amount} currency={item.currency} /><small> / {item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></p>
     </div>
   </article>;
 }

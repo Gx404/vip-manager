@@ -9,7 +9,7 @@ const record: Subscription = { id: "test", name: "Example", plan: "", category: 
 
 test("category filters omit empty categories and do not depend on a search/status filter", () => {
   assert.deepEqual(occupiedCategories([]), []);
-  assert.deepEqual(occupiedCategories([{ category: "AI 工具" }, { category: "购物会员" }, { category: "AI 工具" }]), [{ category: "购物会员", count: 1 }, { category: "AI 工具", count: 2 }]);
+  assert.deepEqual(occupiedCategories([{ category: "AI 工具" }, { category: "购物电商" }, { category: "AI 工具" }]), [{ category: "购物电商", count: 1 }, { category: "AI 工具", count: 2 }]);
 });
 
 test("the seven-day summary includes today and day seven, but no expired or more distant records", () => {
@@ -74,9 +74,15 @@ test("expanded local brands recognize common memberships and prefer more specifi
     "豆包": "doubao", "SuperGrok": "grok", "Midjourney": "midjourney", "海螺AI": "minimax",
     "Trae Pro": "trae", "Manus": "manus", "阿里云 ECS": "alibaba-cloud", "腾讯云": "tencent-cloud",
     "PS Plus": "playstation", "XGPU": "xbox", "Nintendo Switch Online": "nintendo",
+    "YUNYOO 云服务器": "yunyoo", "云悠": "yunyoo", "ISVORO VPS": "isvoro",
+    "Steam": "steam", "Vultr VPS": "vultr", "Digital Ocean": "digitalocean", "Cloudflare Pro": "cloudflare",
+    "GitHub Pro": "github", "GitHub Copilot Pro": "github-copilot", "Bitwarden Premium": "bitwarden",
+    "1Password 家庭版": "1password", "QQ 超级会员": "qq-vip", "Slack Pro": "slack",
+    "Zoom Workplace": "zoom", "Linear": "linear", "Tailscale": "tailscale", "剪映专业版": "capcut",
+    "京东PLUS": "jd", "JD PLUS": "jd", "盒马X会员": "hema", "Freshippo": "hema",
   };
   for (const [name, key] of Object.entries(samples)) assert.equal(matchBrand(name)?.key, key, name);
-  for (const name of ["", "   ", "我的 Netflix 账户", "javascript:alert(1)"]) {
+  for (const name of ["", "   ", "我的 Netflix 账户", "javascript:alert(1)", "QQ音乐", "Microsoft Copilot"]) {
     // Only deliberate prefixes match; no substring or network lookups.
     assert.equal(matchBrand(name), undefined, name);
   }

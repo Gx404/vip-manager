@@ -48,9 +48,9 @@ export function currencyMeta(code: CurrencyCode = "CNY") {
 export function formatCurrency(amount: number, _code?: CurrencyCode): string {
   return amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-/** Display an amount with an unambiguous source-currency symbol. */
+/** Foreign currency codes stay legible and distinguish dollar/peso/yen symbols. */
 export function money(amount: number, code: CurrencyCode = "CNY"): string {
-  return currencyMeta(code).symbol + formatCurrency(amount);
+  return (code === "CNY" ? "¥" : code + " ") + formatCurrency(amount);
 }
 /** Convert with the saved purchase-date snapshot, never a rate from today's query. */
 export function amountInCny(amount: number, rate: number = 1): number {

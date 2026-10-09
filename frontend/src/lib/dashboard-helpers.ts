@@ -12,11 +12,11 @@ export type MembershipTemplate = {
 
 /** Curated presets only provide identity and billing cadence; they never invent a price. */
 export const membershipTemplates: readonly MembershipTemplate[] = [
-  { key: "baidu", name: "百度网盘", plan: "SVIP", category: "云盘存储", color: "#4388d8", cycle: "yearly", customDays: 365 },
+  { key: "baidu", name: "百度网盘", plan: "SVIP", category: "云存储", color: "#4388d8", cycle: "yearly", customDays: 365 },
   { key: "chatgpt", name: "ChatGPT Plus", plan: "Plus", category: "AI 工具", color: "#10a37f", cycle: "monthly", customDays: 30 },
   { key: "bilibili", name: "哔哩哔哩大会员", plan: "大会员", category: "影音娱乐", color: "#fb7299", cycle: "monthly", customDays: 30 },
-  { key: "88vip", name: "淘宝88VIP", plan: "88VIP", category: "购物会员", color: "#ff5000", cycle: "yearly", customDays: 365 },
-  { key: "icloud", name: "iCloud+", plan: "iCloud+", category: "云盘存储", color: "#4f8ee8", cycle: "monthly", customDays: 30 },
+  { key: "88vip", name: "淘宝88VIP", plan: "88VIP", category: "购物电商", color: "#ff5000", cycle: "yearly", customDays: 365 },
+  { key: "icloud", name: "iCloud+", plan: "iCloud+", category: "云存储", color: "#4f8ee8", cycle: "monthly", customDays: 30 },
 ];
 
 /** Recalculate a draft date only when automatic linking is still enabled. */
