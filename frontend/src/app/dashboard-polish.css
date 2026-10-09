@@ -5,9 +5,15 @@
 .topbar { gap: 24px; margin-bottom: 24px; }
 .brand h1 { letter-spacing: -.045em; }
 .header-actions { gap: 8px; }
-.header-secondary { display: flex; align-items: center; gap: 2px; border-left: 1px solid #dfe6e3; padding-left: 8px; margin-left: 2px; }
-.button.quiet { background: transparent; border: 1px solid transparent; box-shadow: none; color: #60746d; }
-.button.quiet:hover { background: #e7efeb; color: #1c5746; }
+.header-toolbox { display: flex; align-items: center; gap: 5px; padding: 5px; border: 1px solid #d8e4dd; border-radius: 15px; background: #edf5f0; box-shadow: 0 4px 13px #203d3010; }
+.header-toolbox .header-utility { min-height: 38px; border: 1px solid #dfe8e3; border-radius: 10px; background: #fff; color: #526b5f; box-shadow: 0 1px 2px #203d3007; }
+.header-toolbox .header-utility:hover { border-color: #bcd5c7; background: #f9fcfa; color: #1e674d; box-shadow: 0 3px 8px #203d300d; transform: translateY(-1px); }
+.header-toolbox .header-utility.is-active { border-color: #a7cdb5; background: #e7f3eb; color: #1b674c; box-shadow: none; }
+.header-toolbox .header-utility:focus-visible { outline: 3px solid #80b5f0; outline-offset: 2px; }
+.header-toolbox .notification-button.has-reminders { border-color: #e5ce9f; background: #fffaf0; color: #95671d; }
+.header-toolbox .notification-button.has-reminders:hover { border-color: #d8b86e; background: #fff7e4; color: #82540f; }
+.header-toolbox .sign-out { color: #687a72; }
+.header-toolbox .notification-button b { background: #ad701e; color: #fff; }
 .button.primary { background: #207f63; box-shadow: 0 3px 8px #17594014; }
 .button.primary:hover { background: #19664f; }
 .notification-button.has-reminders { border-color: #e6d6b8; color: #976119; background: #fffaf1; }
@@ -88,18 +94,18 @@
 
 @media (max-width: 1180px) {
   .header-actions { gap: 6px; }
-  .header-actions .button { padding-left: 11px; padding-right: 11px; }
-  .header-secondary .button span { display: none; }
+  .header-toolbox { gap: 3px; padding: 4px; }
+  .header-toolbox .header-utility { width: 38px; height: 38px; padding: 0; flex-shrink: 0; }
+  .header-toolbox .header-utility span { display: none; }
 }
 @media (max-width: 760px) {
   .topbar { align-items: flex-start; flex-direction: column; gap: 18px; }
   .header-actions { width: 100%; max-width: none; justify-content: flex-start; flex-wrap: nowrap; }
-  .header-secondary { border-left: 0; padding-left: 0; margin-left: 0; gap: 0; }
-  .header-actions .header-utility, .header-actions .notification-button { width: 36px; height: 36px; padding: 0; flex-shrink: 0; }
-  .header-actions .header-utility span, .header-actions .notification-button span { display: none; }
+  .header-toolbox { flex: 1; min-width: 0; justify-content: space-between; }
+  .header-toolbox .header-utility { width: 36px; height: 36px; }
   .header-actions .primary { margin-left: auto; font-size: .8125rem; height: 36px; white-space: nowrap; }
-  .header-actions .notification-button { position: relative; }
-  .header-actions .notification-button b { position: absolute; top: -5px; right: -5px; font-size: .6rem; min-width: 15px; height: 15px; line-height: 15px; padding: 0 3px; }
+  .header-toolbox .notification-button { position: relative; }
+  .header-toolbox .notification-button b { position: absolute; top: -5px; right: -5px; font-size: .6rem; min-width: 15px; height: 15px; line-height: 15px; padding: 0 3px; }
   .section-toolbar { flex-wrap: wrap; gap: 12px; }
   .toolbar-actions { width: 100%; }
   .search { flex: 1; min-width: 0; max-width: none; }
@@ -128,7 +134,8 @@
 }
 @media (max-width: 360px) {
   .header-actions { gap: 5px; }
-  .header-actions .header-utility, .header-actions .notification-button { width: 31px; }
+  .header-toolbox { gap: 2px; padding: 3px; }
+  .header-toolbox .header-utility { width: 31px; height: 31px; }
   .header-actions .primary { padding: 0 10px; }
   .overview .summary-card { padding: 15px 11px; }
   .overview .summary-number { font-size: 1.5rem; }

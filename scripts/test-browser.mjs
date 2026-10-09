@@ -73,6 +73,12 @@ try {
   await page.getByLabel('密码',{exact:true}).fill(config.adminPassword);
   await page.getByRole('button',{name:'登录',exact:true}).click();
   await page.getByRole('button',{name:'退出',exact:true}).waitFor();
+  assert.equal(await page.locator('.header-toolbox').count(),1);
+  assert.equal(await page.locator('.header-toolbox .header-utility').count(),5);
+  const utilityShape=await page.locator('.header-toolbox .header-utility').evaluateAll(buttons=>buttons.map(button=>{const style=getComputedStyle(button);return {height:style.height,borderRadius:style.borderRadius,border:style.border};}));
+  assert.equal(new Set(utilityShape.map(item=>item.height)).size,1);
+  assert.equal(new Set(utilityShape.map(item=>item.borderRadius)).size,1);
+  assert.equal(await page.locator('.header-secondary').count(),0);
   console.log('PASS guest-only subscription browsing, static overview, private API auth and UI login');
   assert.equal(await page.locator(".subscription-card").count(),6);
   assert.equal(await page.locator(".overview .summary-card").count(),2);
@@ -247,6 +253,7 @@ try {
   for (const width of [320,375,390,590,760,768,1024,1920]) {
     await page.setViewportSize({width,height:1000});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`Grid overflow at ${width}`);
+    assert.equal(await page.locator('.header-toolbox .header-utility').count(),5);
     for (const name of ["支出分析","流水","备份","退出","添加订阅"]) {
       const box=await page.getByRole("button",{name,exact:true}).boundingBox();
       assert.ok(box && box.x>=0 && box.x+box.width<=width+1,`${name} clipped at ${width}`);

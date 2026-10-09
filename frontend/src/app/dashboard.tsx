@@ -379,15 +379,13 @@ export default function Dashboard() {
       <header className={`topbar${authRequired ? " guest-topbar" : ""}`}>
         <div className="brand"><h1>Gx404<span className="brand-dot">.</span></h1><span className="brand-divider" /><span className="brand-caption">会员看板</span></div>
         <div className="header-actions">
-          {!authRequired && <>
-          <button className="button light header-utility" aria-label={reportOpen ? "返回看板" : "支出分析"} title={reportOpen ? "返回看板" : "支出分析"} onClick={() => setReportOpen(value => !value)}><BarChart3 size={17} /><span>{reportOpen ? "返回看板" : "支出分析"}</span></button>
-          <button className={`button light notification-button${due.length ? " has-reminders" : ""}`} aria-label={`提醒中心${due.length ? `，${due.length} 项待查看` : ""}`} title="提醒中心" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b aria-hidden="true">{due.length}</b>}</button>
-          <div className="header-secondary">
-            <button className="button quiet header-utility" aria-label="流水" title="续费流水" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={17} /><span>流水</span></button>
-            <button className="button quiet header-utility" aria-label="备份" title="数据备份与恢复" onClick={() => setBackupOpen(true)}><Upload size={17} /><span>备份</span></button>
-            <button className="button quiet header-utility sign-out" aria-label="退出" title="退出登录" onClick={() => void signOut()}><LogOut size={17} /><span>退出</span></button>
-          </div>
-          </>}
+          {!authRequired && <div className="header-toolbox" role="toolbar" aria-label="会员工具">
+            <button className={`button header-utility${reportOpen ? " is-active" : ""}`} aria-label={reportOpen ? "返回看板" : "支出分析"} title={reportOpen ? "返回看板" : "支出分析"} onClick={() => setReportOpen(value => !value)}><BarChart3 size={17} /><span>{reportOpen ? "返回看板" : "支出分析"}</span></button>
+            <button className={`button header-utility notification-button${due.length ? " has-reminders" : ""}`} aria-label={`提醒中心${due.length ? `，${due.length} 项待查看` : ""}`} title="提醒中心" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b aria-hidden="true">{due.length}</b>}</button>
+            <button className="button header-utility" aria-label="流水" title="续费流水" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={17} /><span>流水</span></button>
+            <button className="button header-utility" aria-label="备份" title="数据备份与恢复" onClick={() => setBackupOpen(true)}><Upload size={17} /><span>备份</span></button>
+            <button className="button header-utility sign-out" aria-label="退出" title="退出登录" onClick={() => void signOut()}><LogOut size={17} /><span>退出</span></button>
+          </div>}
           {authRequired ? <button className="button primary" onClick={() => setLoginOpen(true)}>管理员登录</button> : <button className="button primary add-subscription" onClick={() => edit()}><Plus size={17} />添加订阅</button>}
         </div>
       </header>
