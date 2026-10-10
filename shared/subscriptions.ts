@@ -10,6 +10,7 @@ export function normalizeCategory(value: unknown): unknown {
 export const cycles = { monthly: "月付", quarterly: "季付", yearly: "年付", custom: "自定义" } as const;
 export type Subscription = CurrencySnapshot & {
   ratePending?: boolean;
+  coverageStartDate?: string;
   id: string; name: string; plan: string; category: string; amount: number;
   cycle: keyof typeof cycles; customDays: number; startDate: string; endDate: string;
   reminderDays: number; autoRenew: boolean; note: string; color: string; version: number;

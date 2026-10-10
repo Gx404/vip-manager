@@ -238,6 +238,10 @@ try {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:output+'/ledger-mobile.png'});
   await page.setViewportSize({width:1440,height:1000});
+  await page.locator('.ledger-row').first().getByRole('button',{name:'更正付款日期',exact:true}).click();
+  await page.getByLabel('付款日期',{exact:true}).fill('2024-07-19');
+  await page.getByRole('button',{name:'保存付款日期',exact:true}).click();
+  await page.locator('.ledger-row').first().getByText('付款 2024-07-19',{exact:true}).waitFor();
   await page.locator('.ledger-row').first().getByRole('button',{name:'作废',exact:true}).click();
   await page.getByRole('button',{name:'确认作废',exact:true}).click();
   await page.locator('.ledger-summary').getByText('¥55.00',{exact:true}).waitFor();
@@ -252,6 +256,14 @@ try {
   await page.screenshot({path:output+"/desktop-grid.png",fullPage:true});
   await page.getByRole("button",{name:"支出分析",exact:true}).click();
   await page.getByRole("heading",{name:"支出分析",exact:true}).waitFor();
+  await page.getByLabel('统计方式',{exact:true}).selectOption('cash');
+  await page.getByLabel('统计月份',{exact:true}).fill('2024-06');
+  await page.locator('.payment-kpis>div').first().getByText('¥30.00',{exact:true}).waitFor();
+  await page.getByLabel('统计月份',{exact:true}).fill('2024-05');
+  await page.locator('.payment-kpis>div').first().getByText('¥25.00',{exact:true}).waitFor();
+  await page.getByLabel('统计方式',{exact:true}).selectOption('accrual');
+  await page.locator('.payment-kpis>div').first().getByText('¥9.68',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('heading',{name:'月付预计账单',exact:true}).count(),1);
   assert.equal(await page.getByRole("heading",{name:"分类支出",exact:true}).count(),1);
   await page.screenshot({path:output+"/desktop-report.png",fullPage:true});
   for(const width of [320,390,768]){

@@ -44,7 +44,7 @@ export class SubscriptionService {
   list(owner: number) {
     const rows = this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY end_date,id").all(owner);
     const preference = this.db.prepare("SELECT initialized FROM subscription_preferences WHERE user_id=?").get(owner);
-    return { items: rows.map(subscriptionFromRow), initialized: Boolean(preference?.initialized) || rows.length > 0 };
+    return { items: this.withCoverage(owner, rows.map(subscriptionFromRow)), initialized: Boolean(preference?.initialized) || rows.length > 0 };
   }
 
   /** Read only the single administrator's display fields; never select private notes or real versions. */
@@ -52,7 +52,25 @@ export class SubscriptionService {
     const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,original_amount_cents,cycle,custom_days,start_date,end_date,
       reminder_days,auto_renew,color,'' AS note,0 AS version,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,rate_pending FROM subscriptions
       WHERE user_id=(SELECT id FROM users ORDER BY id LIMIT 1) ORDER BY end_date,id`).all();
-    return rows.map(subscriptionFromRow);
+    const owner = Number(this.db.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get()?.id);
+    return this.withCoverage(owner, rows.map(subscriptionFromRow));
+  }
+
+  /** Derive continuous early-renewal coverage from schedule audits, never FX purchase dates. */
+  private withCoverage(owner: number, items: Subscription[]): Subscription[] {
+    const logs = this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=? AND undone_at IS NULL ORDER BY created_at DESC").all(owner).map(renewalFromRow);
+    return items.map(item => {
+      let start = item.startDate, end = item.endDate;
+      const chain = logs.filter(log => log.subscriptionId === item.id && log.payment?.source !== "backfill" &&
+        log.previousStartDate < log.newStartDate && log.previousEndDate === log.newStartDate &&
+        dateInTimeZone(new Date(log.createdAt), this.timeZone) < log.previousEndDate);
+      while (true) {
+        const previous = chain.find(log => log.newStartDate === start && log.newEndDate === end);
+        if (!previous) break;
+        start = previous.previousStartDate; end = previous.previousEndDate;
+      }
+      return start < item.startDate ? {...item, coverageStartDate:start} : item;
+    });
   }
 
   /** Retry missing start-date rates without changing schedule, payments or optimistic versions. */
@@ -188,6 +206,6 @@ export class SubscriptionService {
   private get(owner: number, id: string): Subscription {
     const row = this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? AND id=?").get(owner,id);
     if (!row) throw new ApiError(404,"记录不存在或已删除。","NOT_FOUND");
-    return subscriptionFromRow(row);
+    return this.withCoverage(owner, [subscriptionFromRow(row)])[0];
   }
 }

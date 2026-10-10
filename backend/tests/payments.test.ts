@@ -7,9 +7,10 @@ import { PaymentService } from "../src/payments.ts";
 import { ExchangeRates } from "../src/exchange-rates.ts";
 import { BackupService } from "../src/backups.ts";
 import { RenewalHistory } from "../src/renewal-history.ts";
-import { paymentReport } from "../../shared/payment-reports.ts";
-import type { PaymentInput } from "../../shared/payments.ts";
+import { allocatedPayment, paymentReport } from "../../shared/payment-reports.ts";
+import { defaultPaymentDate, type PaymentInput } from "../../shared/payments.ts";
 import { monthlyCostCny } from "../../shared/subscriptions.ts";
+import { periodPercentage } from "../../shared/presentation.ts";
 
 function setup() {
   const db=openDatabase(":memory:");db.exec("INSERT INTO users VALUES(1,'owner','hash',0),(2,'other','hash',0)");
@@ -86,4 +87,49 @@ test("new period rates retry independently, omit pending budget and restore prio
   await service.refreshPendingRates();const current=service.list(1).items[0];assert.equal(current.ratePending,false);assert.equal(current.fxRateDate,current.startDate);assert.deepEqual(dates,[current.startDate]);
   service.execute(1,{action:"undoRenew",id:item.id,version:1,logId:renewed.renewal!.id});
   const restored=service.list(1).items[0];assert.equal(restored.purchaseDate,item.purchaseDate);assert.equal(restored.fxRateDate,item.fxRateDate);assert.equal(restored.ratePending,false);
+});
+
+test("two prepaid annual bills allocate only over each service year and remain out of monthly forecasts",async t=>{
+  const {db,item,service,payments}=setup();t.after(()=>db.close());
+  const annual={...item,currency:"CNY" as const,fxRateToCny:1,cycle:"yearly" as const,amount:199,startDate:"2024-03-11",endDate:"2025-03-11"};
+  const changed=service.execute(1,{action:"update",id:item.id,version:item.version,item:annual}).item!;
+  const renewed=service.execute(1,{action:"renew",id:item.id,version:changed.version});
+  assert.equal(renewed.item!.coverageStartDate,"2024-03-11");
+  assert.equal(periodPercentage(renewed.item!,"2024-10-10"),71);
+  assert.equal(periodPercentage(renewed.item!,"2025-03-11"),50,"progress cannot reset when the next year begins");
+  assert.equal(service.listPublic()[0].coverageStartDate,"2024-03-11");
+  assert.equal(defaultPaymentDate(renewed.renewal!,"2024-10-10"),"","prepayment requires its actual payment date");
+  await payments.confirm(1,{id:renewed.renewal!.id,entry:{...entry("2025-03-11","2026-03-11"),amount:199,currency:"CNY",paidOn:"2024-03-11"}});
+  await payments.add(1,{subscriptionId:item.id,entries:[{...entry("2024-03-11","2025-03-11"),amount:199,currency:"CNY",paidOn:"2024-03-11"}]});
+  const logs=payments.all(1), cash=paymentReport(logs,[renewed.item!],"2024-10-10","2024-03");
+  assert.equal(cash.total,398);assert.equal(cash.monthTotal,0);
+  const accrual=paymentReport(logs,[renewed.item!],"2024-10-10","2024-10","accrual");
+  assert.ok(Math.abs(accrual.total-199*31/365)<1e-8);
+  assert.equal(accrual.selectedCount,1);assert.equal(accrual.upcoming.length,0);
+  assert.equal(accrual.categories[0].amount,accrual.total);assert.equal(accrual.ranking[0].amount,accrual.total);
+  const first=logs.find(l=>l.payment!.startDate==="2024-03-11")!;
+  const allocated=Array.from({length:13},(_,n)=>allocatedPayment(first,new Date(Date.UTC(2024,2+n,1)).toISOString().slice(0,7))).reduce((a,b)=>a+b,0);
+  assert.ok(Math.abs(allocated-199)<1e-8,"allocations conserve the paid amount across month/year boundaries");
+  const monthly={...item,endDate:"2024-10-20"};
+  const yearly={...annual,id:randomUUID(),endDate:"2024-10-23"};
+  assert.equal(paymentReport([], [monthly,yearly,{...yearly,id:randomUUID(),cycle:"quarterly"}],"2024-10-10").upcoming.length,1);
+});
+
+test("payment date corrections preserve audit, amounts, coverage and backups while moving cash month",async t=>{
+  const {db,item,payments,service,backups}=setup();t.after(()=>db.close());
+  await payments.add(1,{subscriptionId:item.id,entries:[{...entry(),paidOn:"2024-10-10"}]});
+  const log=payments.all(1)[0], before=service.list(1);
+  assert.equal(defaultPaymentDate({...log,payment:null},"2024-10-10"),"2024-05-20");
+  assert.throws(()=>payments.correctDate(2,{id:log.id,paidOn:"2024-05-20",expectedPaidOn:"2024-10-10"}),{status:404});
+  payments.correctDate(1,{id:log.id,paidOn:"2024-05-20",expectedPaidOn:"2024-10-10"});
+  const corrected=payments.all(1)[0];
+  assert.deepEqual({...corrected.payment,paidOn:log.payment!.paidOn,dateCorrections:undefined},{...log.payment,dateCorrections:undefined});
+  assert.equal(corrected.payment!.dateCorrections![0].from,"2024-10-10");
+  assert.equal(paymentReport([corrected],[],"2024-10-10","2024-10").total,0);
+  assert.equal(paymentReport([corrected],[],"2024-10-10","2024-05").total,100);
+  assert.deepEqual(service.list(1),before);
+  assert.throws(()=>payments.correctDate(1,{id:log.id,paidOn:"2024-05-21",expectedPaidOn:"2024-10-10"}),{status:409});
+  const backup=backups.export(1);backups.import(2,{backup,mode:"merge",expectedRevision:backups.preview(2,backup).revision});
+  assert.deepEqual(payments.all(2),payments.all(1));
+  payments.void(1,{id:log.id});assert.throws(()=>payments.correctDate(1,{id:log.id,paidOn:"2024-05-21",expectedPaidOn:"2024-05-20"}),{status:409});
 });

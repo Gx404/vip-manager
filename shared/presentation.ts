@@ -33,8 +33,8 @@ export function progressColor(percentage: number): string {
 }
 
 /** Return the entered period's remaining percentage, clamped to 0–100 for both label and bar. */
-export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate">, today: string): number {
-  const total = dateNumber(item.endDate) - dateNumber(item.startDate);
+export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate" | "coverageStartDate">, today: string): number {
+  const total = dateNumber(item.endDate) - dateNumber(item.coverageStartDate ?? item.startDate);
   const days = dateNumber(item.endDate) - dateNumber(today);
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(days)) return 0;
   const left = Math.max(0, Math.min(total, days));

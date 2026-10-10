@@ -16,6 +16,7 @@ export const paymentInputSchema = z.object(fields).strict().refine(p => p.endDat
 export const paymentSchema = z.object({ ...fields, rate: z.number().finite().positive().max(100_000), rateDate: dateSchema,
   category: z.enum(categories), plan: z.string().max(80), source: z.enum(["backfill", "renewal"]),
   confirmedAt: z.string().datetime(), voidedAt: z.string().datetime().nullable(),
+  dateCorrections: z.array(z.object({from:dateSchema,to:dateSchema,changedAt:z.string().datetime()}).strict()).max(100).optional(),
 }).strict().refine(p => p.endDate > p.startDate && p.rateDate <= p.startDate && (p.currency !== "CNY" || p.rate === 1), "支付账期或汇率不正确。")
   .refine(p => !p.voidedAt || p.voidedAt >= p.confirmedAt, "作废时间不正确。");
 const batchSchema = z.object({ subscriptionId: idSchema, entries: z.array(paymentInputSchema).min(1).max(36) }).strict();
@@ -98,6 +99,21 @@ export class PaymentService {
       const payment = {...log.payment,voidedAt:new Date().toISOString()};
       this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,id);
       return {id};
+    });
+  }
+
+  correctDate(owner: number, value: unknown) {
+    const input = z.object({id:idSchema,paidOn:dateSchema,expectedPaidOn:dateSchema}).strict().parse(value);
+    this.checkDate({paidOn:input.paidOn,startDate:input.paidOn});
+    return transaction(this.db, () => {
+      const log = renewalFromRow(new RenewalHistory(this.db).get(owner,input.id));
+      if (paymentState(log) !== "paid" || !log.payment) throw new ApiError(409,"只有已支付记录可以更正付款日期。");
+      if (log.payment.paidOn !== input.expectedPaidOn) throw new ApiError(409,"付款日期已变化，请刷新后重试。");
+      if (log.payment.paidOn === input.paidOn) return {log};
+      if ((log.payment.dateCorrections?.length ?? 0) >= 100) throw new ApiError(409,"更正次数已达上限。");
+      const payment: Payment = {...log.payment,paidOn:input.paidOn,dateCorrections:[...(log.payment.dateCorrections??[]),{from:log.payment.paidOn,to:input.paidOn,changedAt:new Date().toISOString()}]};
+      this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,input.id);
+      return {log:{...log,payment}};
     });
   }
 }

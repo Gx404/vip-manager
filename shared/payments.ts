@@ -5,6 +5,7 @@ export type Payment = {
   amount: number; currency: CurrencyCode; paidOn: string; startDate: string; endDate: string;
   rate: number; rateDate: string; category: string; plan: string; note: string;
   source: "backfill" | "renewal"; confirmedAt: string; voidedAt: string | null;
+  dateCorrections?: { from: string; to: string; changedAt: string }[];
 };
 export type PaymentInput = Pick<Payment, "amount" | "currency" | "paidOn" | "startDate" | "endDate" | "note">;
 export type PaymentPreview = PaymentInput & { rate: number; rateDate: string; duplicate: boolean };
@@ -12,3 +13,7 @@ export function paymentState(log: RenewalLog): "paid" | "pending" | "void" {
   return log.undoneAt || log.payment?.voidedAt ? "void" : log.payment ? "paid" : "pending";
 }
 export function paymentCny(payment: Payment): number { return payment.amount * payment.rate; }
+/** Future service dates cannot stand in for an actual prepayment date. */
+export function defaultPaymentDate(log: RenewalLog, today: string): string {
+  return log.payment?.paidOn ?? (log.newStartDate <= today ? log.newStartDate : "");
+}

@@ -125,6 +125,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   app.post("/api/payments/backfill", async (req,res) => res.json(await payments.add(res.locals.user.id,req.body)));
   app.post("/api/payments/confirm", async (req,res) => res.json(await payments.confirm(res.locals.user.id,req.body)));
   app.post("/api/payments/void", (req,res) => res.json(payments.void(res.locals.user.id,req.body)));
+  app.post("/api/payments/date", (req,res) => res.json(payments.correctDate(res.locals.user.id,req.body)));
   app.get("/api/subscriptions/history", (req,res) => {
     const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);
     res.json(history.list(res.locals.user.id,query.subscriptionId,query.offset,query.limit));

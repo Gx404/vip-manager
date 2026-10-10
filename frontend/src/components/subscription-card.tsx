@@ -14,7 +14,8 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
   const metadata = [item.plan, item.category].filter(Boolean).join(" · ");
   // Calendar days decide expiry; a long period can round to 0% while it is still active.
   const statusLabel = days < 0 ? "已到期" : days === 0 ? "今日到期" : status === "soon" ? "即将到期" : null;
-  const progressLabel = `${item.name}：本期剩余 ${progress}%，${days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今日到期" : `距到期 ${days} 天`}`;
+  const periodLabel = item.coverageStartDate ? "总时长剩余" : "本期剩余";
+  const progressLabel = `${item.name}：${periodLabel} ${progress}%，${item.coverageStartDate ?? item.startDate} 至 ${item.endDate}，${days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今日到期" : `距到期 ${days} 天`}`;
 
   return <article className={`subscription-card ${status}`} aria-label={item.name}>
     <div className="card-heading">
@@ -27,7 +28,7 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
       <time className="expiry-date" dateTime={item.endDate}>{item.endDate.replaceAll("-", ".")} 到期</time>
     </div>
     <div className="progress-caption">
-      {statusLabel ? <span className={`card-status ${days <= 0 ? "expired" : "soon"}`}>{statusLabel}</span> : <span>本期剩余</span>}
+      {statusLabel ? <span className={`card-status ${days <= 0 ? "expired" : "soon"}`}>{statusLabel}</span> : <span>{periodLabel}</span>}
       <span>{progress}%</span>
     </div>
     <Progress value={progress} aria-label={progressLabel} aria-valuetext={progressLabel} title={progressLabel} className={`segments${progress === 0 ? " is-empty" : ""}`} style={{ "--segment-color": progressColor(progress) } as CSSProperties} />

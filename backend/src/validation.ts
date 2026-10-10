@@ -43,6 +43,7 @@ export function migrateLegacyCurrency(value: unknown): unknown {
 }
 export const subscriptionObject = z.object({
   ratePending: z.boolean().optional(),
+  coverageStartDate: dateSchema.optional(),
   id: idSchema,
   name: z.string().trim().min(1,"请填写会员名称。").max(60),
   plan: z.string().trim().max(80),
