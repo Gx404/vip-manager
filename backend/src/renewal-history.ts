@@ -17,6 +17,8 @@ export function renewalFromRow(row: Row): RenewalLog {
     fxRateSource: String(row.fx_rate_source || "manual") as RenewalLog["fxRateSource"],
     periods: Number(row.periods), createdAt: new Date(Number(row.created_at)).toISOString(),
     undoneAt: row.undone_at === null ? null : new Date(Number(row.undone_at)).toISOString(),
+    payment: row.payment_json ? JSON.parse(String(row.payment_json)) : null,
+    previousRatePending: Boolean(row.previous_rate_pending),
   };
 }
 
@@ -34,6 +36,7 @@ export class RenewalHistory {
       .run(owner,id,previous.id,previous.name,kind,previous.startDate,previous.endDate,next.startDate,next.endDate,
         previousAnchor,newAnchor,Math.round(previous.amount * 100) * periods,previous.currency ?? "CNY",previous.purchaseDate ?? previous.startDate,previous.fxRateToCny ?? 1,previous.fxRateDate ?? previous.purchaseDate ?? previous.startDate,previous.fxRateSource ?? "manual",periods,now,next.version,
         kind === "manual" ? now + UNDO_RENEWAL_MS : null,requestId);
+    this.db.prepare("UPDATE subscription_renewal_logs SET previous_rate_pending=? WHERE user_id=? AND id=?").run(Number(Boolean(previous.ratePending)),owner,id);
     return renewalFromRow(this.get(owner, id));
   }
 

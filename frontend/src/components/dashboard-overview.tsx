@@ -24,7 +24,7 @@ export function DashboardOverview({ items, today, monthly, canManage, onCosts }:
     <SpendingCard className={`summary-card spending-summary${canManage ? " clickable" : ""}`} onClick={canManage ? onCosts : undefined} aria-haspopup={canManage ? "dialog" : undefined} aria-label={canManage ? "月均支出，查看摊算明细" : "月均支出"}>
       <div className="summary-label">月均支出<Wallet aria-hidden="true" /></div>
       <div className="summary-number"><small>¥</small>{formatCurrency(monthly, "CNY")}<span>/ 月</span></div>
-      <div className="spending-bottom"><span>年约 <b>¥{formatCurrency(monthly * 12, "CNY")}</b></span>{canManage && <span className="summary-link">摊算明细<ArrowUpRight size={15} aria-hidden="true" /></span>}</div>
+      <div className="spending-bottom"><span>{items.some(i=>i.ratePending)?`${items.filter(i=>i.ratePending).length} 项汇率待补全，未计入`:<>年约 <b>¥{formatCurrency(monthly * 12, "CNY")}</b></>}</span>{canManage && <span className="summary-link">摊算明细<ArrowUpRight size={15} aria-hidden="true" /></span>}</div>
     </SpendingCard>
   </section>;
 }

@@ -15,8 +15,8 @@ export class ExchangeRates {
 
   async lookup(input: unknown): Promise<HistoricalRate> {
     const { currency, date } = rateQuerySchema.parse(input);
-    if (date > new Date().toISOString().slice(0, 10)) throw new ApiError(400, "未来日期尚无历史汇率，请改用实际结算汇率。");
     if (currency === "CNY") return { currency, requestedDate: date, rateDate: date, rate: 1, source: "manual" };
+    if (date > new Date().toISOString().slice(0, 10)) throw new ApiError(400, "本期尚未开始，开始当天再自动获取汇率。");
     const key = currency + ":" + date;
     const cached = this.cache.get(key);
     if (cached && cached.expires > Date.now()) return cached.value;

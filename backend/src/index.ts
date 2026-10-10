@@ -10,6 +10,7 @@ import type { DatabaseSync } from "node:sqlite";
 let db: DatabaseSync | undefined;
 let stopRenewals: (() => void) | undefined;
 let stopNotifications: (() => Promise<void>) | undefined;
+let stopRates: (() => Promise<void>) | undefined;
 let notifications: EmailNotificationService | undefined;
 try {
   const config = readConfig();
@@ -17,6 +18,8 @@ try {
   db = openDatabase(config.databasePath);
   await bootstrapAdmin(db,config);
   stopRenewals = startRenewalScheduler(new SubscriptionService(db,config.timeZone));
+  const rateService = new SubscriptionService(db,config.timeZone);
+  stopRates = startNotificationScheduler({sendDueReminders:async () => { await rateService.refreshPendingRates(); return 0; }});
   notifications = new EmailNotificationService(db, config);
   if (config.email.enabled) stopNotifications = startNotificationScheduler(notifications);
   const server = createApp(db,config,notifications).listen(config.port,config.host,() => {
@@ -28,6 +31,7 @@ try {
     console.error("后端启动失败：",error.message);
     stopRenewals?.();
     await stopNotifications?.();
+    await stopRates?.();
     await notifications?.drain();
     try { db?.close(); } catch { console.error("数据库关闭失败。"); }
     process.exitCode=1;
@@ -38,10 +42,12 @@ try {
     stopping=true;
     stopRenewals?.();
     const drained = stopNotifications?.();
+    const ratesDrained = stopRates?.();
     const timer=setTimeout(() => { server.closeAllConnections(); },10_000);
     timer.unref();
     server.close(async () => {
       await drained;
+      await ratesDrained;
       await notifications?.drain();
       clearTimeout(timer);
       try { db?.close(); } catch { console.error("数据库关闭失败。"); process.exitCode=1; }
@@ -52,6 +58,7 @@ try {
 } catch (error) {
   stopRenewals?.();
   await stopNotifications?.();
+  await stopRates?.();
   await notifications?.drain();
   console.error("启动失败：",error instanceof Error ? error.message : "未知错误");
   try { db?.close(); } catch { console.error("数据库关闭失败。"); }

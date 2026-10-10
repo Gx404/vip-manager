@@ -30,6 +30,7 @@ test("v6 category migration preserves money, dates, owners and history, and runs
     db.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
   }
   db.exec("PRAGMA user_version=6; INSERT INTO users VALUES(1,'owner','keep-hash',1),(2,'other','keep-other-hash',2)");
+  db.exec(readFileSync(new URL("../migrations/008_payment_ledger.sql",import.meta.url),"utf8"));
   let service = new SubscriptionService(db, "Asia/Shanghai");
   const expected = new Map<string, string>();
   for (const owner of [1, 2]) {
@@ -47,25 +48,26 @@ test("v6 category migration preserves money, dates, owners and history, and runs
       expected.set(created.id, newCategory);
     }
   }
+  db.exec("ALTER TABLE subscriptions DROP COLUMN rate_pending; ALTER TABLE subscription_renewal_logs DROP COLUMN payment_json; ALTER TABLE subscription_renewal_logs DROP COLUMN previous_rate_pending");
   const snapshot = (table: string) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
   const before = snapshot("subscriptions");
   const otherTables = ["users", "subscription_preferences", "subscription_renewal_logs", "automatic_renewal_events"];
   const others = otherTables.map(snapshot);
   db.close(); db = openDatabase(path);
   try {
-    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 7);
+    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 8);
     assert.equal(db.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
     const after = snapshot("subscriptions");
     assert.equal(after.length, before.length);
     for (const [index, old] of before.entries()) {
-      const actual = after[index], category = expected.get(String(old.id))!;
-      if (category === old.category) assert.deepEqual(actual, old);
+      const {rate_pending, ...actual} = after[index], category = expected.get(String(old.id))!;
+      if (category === old.category) assert.deepEqual(actual, {...old});
       else {
         assert.ok(Number(actual.updated_at) > Number(old.updated_at));
         assert.deepEqual({ ...actual }, { ...old, category, version: Number(old.version) + 1, updated_at: actual.updated_at });
       }
     }
-    otherTables.forEach((table, index) => assert.deepEqual(snapshot(table), others[index]));
+    otherTables.forEach((table, index) => assert.deepEqual(snapshot(table).map(row=>{const {payment_json,previous_rate_pending,...rest}=row;return rest;}), others[index].map(row=>({...row}))));
     service = new SubscriptionService(db, "Asia/Shanghai");
     const migrated = service.list(1).items.find(record => record.name === "醒图会员")!;
     assert.throws(() => service.execute(1, { action: "update", id: migrated.id, version: migrated.version - 1, item: { ...migrated, category: "影音娱乐" } }), { status: 409 });

@@ -9,6 +9,7 @@ export function normalizeCategory(value: unknown): unknown {
 }
 export const cycles = { monthly: "月付", quarterly: "季付", yearly: "年付", custom: "自定义" } as const;
 export type Subscription = CurrencySnapshot & {
+  ratePending?: boolean;
   id: string; name: string; plan: string; category: string; amount: number;
   cycle: keyof typeof cycles; customDays: number; startDate: string; endDate: string;
   reminderDays: number; autoRenew: boolean; note: string; color: string; version: number;
@@ -30,6 +31,7 @@ export function monthlyCost(item: Subscription): number {
 }
 /** Monthly cost converted to the dashboard base currency using the locked rate. */
 export function monthlyCostCny(item: Subscription): number {
+  if (item.ratePending) return 0;
   return amountInCny(monthlyCost(item), item.fxRateToCny);
 }
 /** Add a billing cycle with month-end clamping. */

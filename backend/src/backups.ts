@@ -8,6 +8,7 @@ import { subscriptionFromRow } from "./subscriptions.ts";
 import { renewalFromRow } from "./renewal-history.ts";
 import type { BackupDocument, ImportPreview } from "../../shared/renewals.ts";
 import { billingAnchor, cycleBoundary } from "../../shared/billing.ts";
+import { paymentSchema } from "./payments.ts";
 
 const timestamp = z.string().datetime({ offset: true });
 const renewalSchema = z.object({
@@ -15,12 +16,14 @@ const renewalSchema = z.object({
   previousStartDate: dateSchema, previousEndDate: dateSchema, newStartDate: dateSchema, newEndDate: dateSchema,
   amount: z.number().finite().min(0).max(1_100_000_000_000).nullable(), ...currencyFields, periods: z.number().int().min(1).max(110_000),
   createdAt: timestamp, undoneAt: timestamp.nullable(),
+  payment: paymentSchema.nullable().optional(),
+  previousRatePending: z.boolean().optional(),
 }).strict().refine(validCurrency, "流水汇率数据不完整。").refine(log => log.previousEndDate > log.previousStartDate && log.newEndDate > log.newStartDate, "流水账期不正确。")
   .refine(log => log.undoneAt === null || (log.kind === "manual" && Date.parse(log.undoneAt) >= Date.parse(log.createdAt)), "撤销时间不正确。")
   .refine(log => log.amount === null || (Number.isSafeInteger(Math.round(log.amount * 100)) && Number(log.amount.toFixed(2)) === log.amount), "流水金额超出范围或超过两位小数。");
 
 export const backupSchema = z.object({
-  application: z.literal("vip-manager"), formatVersion: z.union([z.literal(1), z.literal(2)]), exportedAt: timestamp, currency: z.literal("CNY"),
+  application: z.literal("vip-manager"), formatVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]), exportedAt: timestamp, currency: z.literal("CNY"),
   subscriptions: z.array(z.preprocess(migrateLegacyCurrency, subscriptionObject.extend({ renewalAnchorDate: dateSchema }).refine(validCurrency, "订阅汇率数据不完整。").refine(validPeriod, "到期日期必须晚于开始日期。")
     .refine(item => {
       if (item.renewalAnchorDate > item.endDate) return false;
@@ -47,7 +50,7 @@ export class BackupService {
 
   export(owner: number): BackupDocument {
     return {
-      application: "vip-manager", formatVersion: 2, exportedAt: new Date().toISOString(), currency: "CNY",
+      application: "vip-manager", formatVersion: 3, exportedAt: new Date().toISOString(), currency: "CNY",
       subscriptions: this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY id").all(owner)
         .map(row => ({ ...subscriptionFromRow(row), renewalAnchorDate: String(row.renewal_anchor_date) || billingAnchor(subscriptionFromRow(row)) })),
       renewalLogs: this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=? ORDER BY id").all(owner).map(renewalFromRow),
@@ -92,6 +95,7 @@ export class BackupService {
           .run(owner,item.id,item.name,item.plan,item.category,Math.round(item.amount*(item.fxRateToCny ?? 1)*100),item.cycle,item.customDays,item.startDate,
             item.endDate,item.reminderDays,Number(item.autoRenew),item.note,item.color,item.currency ?? "CNY",item.purchaseDate ?? item.startDate,item.fxRateToCny ?? 1,item.fxRateDate ?? item.purchaseDate ?? item.startDate,item.fxRateSource ?? "manual",Math.round(item.amount*100),version,Date.now(),item.renewalAnchorDate);
         importedSubscriptions++;
+        this.db.prepare("UPDATE subscriptions SET rate_pending=? WHERE user_id=? AND id=?").run(Number(Boolean(item.ratePending)),owner,item.id);
       }
       for (const log of input.backup.renewalLogs) {
         const result = this.db.prepare(`INSERT INTO subscription_renewal_logs(user_id,id,subscription_id,subscription_name,kind,
@@ -101,6 +105,8 @@ export class BackupService {
             log.previousStartDate,log.newStartDate,log.amount === null ? null : Math.round(log.amount*100),log.currency ?? "CNY",log.purchaseDate ?? log.previousStartDate,log.fxRateToCny ?? 1,log.fxRateDate ?? log.purchaseDate ?? log.previousStartDate,log.fxRateSource ?? "manual",log.periods,Date.parse(log.createdAt),
             log.undoneAt === null ? null : Date.parse(log.undoneAt));
         importedLogs += Number(result.changes);
+        if (Number(result.changes) && log.payment) this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(log.payment),owner,log.id);
+        if (Number(result.changes) && log.previousRatePending) this.db.prepare("UPDATE subscription_renewal_logs SET previous_rate_pending=1 WHERE user_id=? AND id=?").run(owner,log.id);
       }
       this.db.prepare("INSERT INTO subscription_preferences(user_id,initialized) VALUES(?,1) ON CONFLICT(user_id) DO UPDATE SET initialized=1").run(owner);
       return { importedSubscriptions, importedLogs, skippedSubscriptions };

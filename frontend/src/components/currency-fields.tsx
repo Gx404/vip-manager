@@ -1,43 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { currencyCatalog, type CurrencyCode, type HistoricalRate } from "../../../shared/currency.ts";
-import { ContextHelp } from "@/components/context-help";
 export type CurrencyDraft = {
-  currency: CurrencyCode; purchaseDate: string; fxRateToCny: string; fxRateDate: string; fxRateSource: "manual" | "frankfurter";
+  currency: CurrencyCode; purchaseDate: string; fxRateToCny: string; fxRateDate: string; fxRateSource: "manual" | "frankfurter"; ratePending?: boolean;
 };
-
-/** Edit a purchase-date snapshot. Lookup failures never silently substitute a current or guessed rate. */
-export function CurrencyFields({ value, onChange }: { value: CurrencyDraft; onChange: (patch: Partial<CurrencyDraft>) => void }) {
-  const sequence = useRef(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => () => { ++sequence.current; }, []);
-  useEffect(() => { setBusy(false); setError(""); return () => { ++sequence.current; }; }, [value.currency, value.purchaseDate]);
-  function invalidate() { ++sequence.current; setBusy(false); setError(""); }
-  function reset(currency: CurrencyCode, purchaseDate: string) {
-    invalidate();
-    onChange({ currency, purchaseDate, fxRateToCny: currency === "CNY" ? "1" : "", fxRateDate: purchaseDate, fxRateSource: "manual" });
-  }
-  async function lookup() {
-    const id = ++sequence.current;
-    setBusy(true); setError("");
-    try {
-      const query = new URLSearchParams({ currency: value.currency, date: value.purchaseDate });
-      const result = await apiRequest<HistoricalRate>("/exchange-rate?" + query);
-      if (id !== sequence.current) return;
-      onChange({ fxRateToCny: String(result.rate), fxRateDate: result.rateDate, fxRateSource: result.source });
-    } catch (reason) {
-      if (id === sequence.current) setError(reason instanceof Error ? reason.message : "汇率查询失败，请按账单手动填写。");
-    } finally { if (id === sequence.current) setBusy(false); }
-  }
+export function CurrencyFields({ value, startDate, onChange }: { value: CurrencyDraft; startDate: string; onChange: (patch: Partial<CurrencyDraft>) => void }) {
+  const update = useRef(onChange); update.current = onChange;
+  const [busy,setBusy] = useState(false), [error,setError] = useState(""), [retry,setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setError("");
+    if (value.currency === "CNY") { update.current({purchaseDate:startDate,fxRateToCny:"1",fxRateDate:startDate,fxRateSource:"manual",ratePending:false}); setBusy(false); return; }
+    setBusy(true);
+    update.current({purchaseDate:startDate,fxRateToCny:"",fxRateDate:startDate,fxRateSource:"manual",ratePending:true});
+    const timer = window.setTimeout(() => {
+      void apiRequest<HistoricalRate>("/exchange-rate?" + new URLSearchParams({currency:value.currency,date:startDate})).then(fx => {
+        if (active) update.current({purchaseDate:startDate,fxRateToCny:String(fx.rate),fxRateDate:fx.rateDate,fxRateSource:fx.source,ratePending:false});
+      }).catch(reason => { if(active) setError(reason instanceof Error ? reason.message : "汇率待补全，稍后自动重试。"); }).finally(() => {if(active) setBusy(false);});
+    },300);
+    return () => {active=false; window.clearTimeout(timer);};
+  },[value.currency,startDate,retry]);
   return <>
-    <label className="form-field"><span>付款币种</span><select value={value.currency} onChange={event => reset(event.target.value as CurrencyCode, value.purchaseDate)}>{currencyCatalog.map(item => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}</select></label>
-    <label className="form-field"><span>购买日期（汇率基准）</span><input type="date" required min="1900-01-01" max="2200-12-31" value={value.purchaseDate} onChange={event => reset(value.currency, event.target.value)} /></label>
-    {value.currency !== "CNY" && <div className="fx-fields wide">
-      <label className="form-field"><span>购买时汇率（1 {value.currency} = 人民币） *</span><input required type="number" min="0.00000001" max="100000" step="any" value={value.fxRateToCny} placeholder="输入实际结算汇率，或查询历史值" onChange={event => { invalidate(); onChange({ fxRateToCny: event.target.value, fxRateDate: value.purchaseDate, fxRateSource: "manual" }); }} /></label>
-      <button type="button" className="button light" disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(value.purchaseDate)} onClick={() => void lookup()}>{busy ? "查询中…" : "查询购买日汇率"}</button>
-      <div className="fx-status">{value.fxRateToCny && <span>{value.fxRateSource === "frankfurter" ? "Frankfurter 历史参考" : "手动结算"} · {value.fxRateDate}</span>}<ContextHelp label="历史汇率说明">按购买日期查询，非交易日取此前报价。保存后锁定，跨年续费也不改写。可按实际账单手动填写。</ContextHelp></div>
-      {error && <p className="red form-help" role="alert">{error}</p>}
-    </div>}
+    <label className="form-field"><span>付款币种</span><select value={value.currency} onChange={event => onChange({currency:event.target.value as CurrencyCode})}>{currencyCatalog.map(item => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}</select></label>
+    {value.currency !== "CNY" && <div className="auto-fx wide" role="status">{busy ? "正在获取本期开始日汇率…" : error ? <><span>{error} 未补全前不计入人民币估算。</span><button type="button" className="text-action" onClick={()=>setRetry(n=>n+1)}>重试</button></> : <span>参考汇率：1 {value.currency} ≈ ¥{value.fxRateToCny} · 按本期开始日自动获取（报价 {value.fxRateDate}）</span>}</div>}
   </>;
 }

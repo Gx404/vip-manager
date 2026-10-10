@@ -10,6 +10,7 @@ import { RenewalHistory } from "./renewal-history.ts";
 import { BackupService } from "./backups.ts";
 import { idSchema } from "./validation.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
+import { PaymentService } from "./payments.ts";
 import { PASSWORD_MAX_LENGTH } from "./password-policy.ts";
 import type { EmailNotificationService } from "./notifications.ts";
 
@@ -21,13 +22,13 @@ function tokenFromCookie(value: string | undefined): string {
 const loginSchema = z.object({ username: z.string().min(1).max(60), password: z.string().min(1).max(PASSWORD_MAX_LENGTH) }).strict();
 
 /** Build the independent HTTP API. Caller owns server lifecycle and database cleanup. */
-export function createApp(db: DatabaseSync, config: Config, notifications?: Pick<EmailNotificationService, "status" | "sendTest">) {
+export function createApp(db: DatabaseSync, config: Config, notifications?: Pick<EmailNotificationService, "status" | "sendTest">, exchangeRates = new ExchangeRates()) {
   const app = express();
   const auth = new AuthService(db, config);
-  const subscriptions = new SubscriptionService(db, config.timeZone);
+  const subscriptions = new SubscriptionService(db, config.timeZone, () => new Date(), exchangeRates);
   const history = new RenewalHistory(db);
   const backups = new BackupService(db);
-  const exchangeRates = new ExchangeRates();
+  const payments = new PaymentService(db,exchangeRates);
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxy ? config.trustedProxyRanges : false);
@@ -61,12 +62,17 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   });
   const smallJson = express.json({ limit: "20kb", strict: true });
   // The schema still caps record counts; 20 MB permits a complete personal export with notes/history.
+  const paymentJson = express.json({limit:"100kb",strict:true});
   const backupJson = express.json({ limit: "20mb", strict: true });
   app.use((req,res,next) => {
     // Authenticate before buffering a potentially large private import request.
     if (req.path === "/api/backup/import" || req.path === "/api/backup/preview") {
       if (!auth.session(tokenFromCookie(req.get("Cookie")))) return next(new ApiError(401,"请先登录自己的管理员账号。","AUTH_REQUIRED"));
       return backupJson(req,res,next);
+    }
+    if (req.path.startsWith("/api/payments/")) {
+      if (!auth.session(tokenFromCookie(req.get("Cookie")))) return next(new ApiError(401,"请先登录。","AUTH_REQUIRED"));
+      return paymentJson(req,res,next);
     }
     return smallJson(req,res,next);
   });
@@ -114,6 +120,11 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   });
   app.get("/api/exchange-rate", async (req,res) => res.json(await exchangeRates.lookup(req.query)));
   app.get("/api/subscriptions", (_req,res) => res.json(subscriptions.list(res.locals.user.id)));
+  app.get("/api/payments", (_req,res) => res.json({logs:payments.all(res.locals.user.id)}));
+  app.post("/api/payments/preview", async (req,res) => res.json(await payments.preview(res.locals.user.id,req.body)));
+  app.post("/api/payments/backfill", async (req,res) => res.json(await payments.add(res.locals.user.id,req.body)));
+  app.post("/api/payments/confirm", async (req,res) => res.json(await payments.confirm(res.locals.user.id,req.body)));
+  app.post("/api/payments/void", (req,res) => res.json(payments.void(res.locals.user.id,req.body)));
   app.get("/api/subscriptions/history", (req,res) => {
     const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);
     res.json(history.list(res.locals.user.id,query.subscriptionId,query.offset,query.limit));
@@ -131,8 +142,19 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
     res.json(backups.preview(res.locals.user.id,input.backup));
   });
   app.post("/api/backup/import", (req,res) => res.json(backups.import(res.locals.user.id,req.body)));
-  app.post("/api/subscriptions", (req,res) => {
+  app.post("/api/subscriptions", async (req,res) => {
+    if (["create","update"].includes(req.body.action) && req.body.item?.purchaseDate === req.body.item?.startDate) {
+      const draft = req.body.item;
+      try {
+        const fx = await exchangeRates.lookup({currency:draft.currency ?? "CNY",date:draft.startDate});
+        req.body.item = {...draft,fxRateToCny:fx.rate,fxRateDate:fx.rateDate,fxRateSource:fx.source,ratePending:false};
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        req.body.item = {...draft,fxRateToCny:1,fxRateDate:draft.startDate,fxRateSource:"manual",ratePending:true};
+      }
+    }
     const result = subscriptions.execute(res.locals.user.id,req.body);
+    if (req.body.action === "renew") void subscriptions.refreshPendingRates();
     res.status(req.body.action === "create" ? 201 : 200).json(result);
   });
   app.use((_req,_res,next) => next(new ApiError(404,"接口不存在。","NOT_FOUND")));

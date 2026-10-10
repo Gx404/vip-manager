@@ -7,10 +7,12 @@ import { ApiError } from "./errors.ts";
 import { transaction } from "./database.ts";
 import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import type { RenewalLog } from "../../shared/renewals.ts";
+import { ExchangeRates } from "./exchange-rates.ts";
 
 type Row = Record<string, unknown>;
 export function subscriptionFromRow(row: Row): Subscription {
   return {
+    ratePending: Boolean(row.rate_pending),
     id: String(row.id), name: String(row.name), plan: String(row.plan), category: String(row.category),
     amount: Number(row.original_amount_cents) / 100, cycle: row.cycle as Subscription["cycle"], customDays: Number(row.custom_days),
     startDate: String(row.start_date), endDate: String(row.end_date), reminderDays: Number(row.reminder_days),
@@ -29,11 +31,13 @@ function values(item: Subscription): SQLInputValue[] {
 
 /** User-scoped storage and authoritative renewals; UI and server share date arithmetic. */
 export class SubscriptionService {
+  private rates: ExchangeRates;
   private db: DatabaseSync;
   private timeZone: string;
   private history: RenewalHistory;
   private clock: () => Date;
-  constructor(db: DatabaseSync, timeZone: string, clock: () => Date = () => new Date()) {
+  constructor(db: DatabaseSync, timeZone: string, clock: () => Date = () => new Date(), rates = new ExchangeRates()) {
+    this.rates = rates;
     this.db=db; this.timeZone=timeZone; this.history=new RenewalHistory(db); this.clock=clock;
   }
 
@@ -46,9 +50,21 @@ export class SubscriptionService {
   /** Read only the single administrator's display fields; never select private notes or real versions. */
   listPublic(): Subscription[] {
     const rows = this.db.prepare(`SELECT id,name,plan,category,amount_cents,original_amount_cents,cycle,custom_days,start_date,end_date,
-      reminder_days,auto_renew,color,'' AS note,0 AS version,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source FROM subscriptions
+      reminder_days,auto_renew,color,'' AS note,0 AS version,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,rate_pending FROM subscriptions
       WHERE user_id=(SELECT id FROM users ORDER BY id LIMIT 1) ORDER BY end_date,id`).all();
     return rows.map(subscriptionFromRow);
+  }
+
+  /** Retry missing start-date rates without changing schedule, payments or optimistic versions. */
+  async refreshPendingRates(): Promise<void> {
+    const rows = this.db.prepare("SELECT * FROM subscriptions WHERE rate_pending=1 AND start_date<=? LIMIT 20").all(new Date().toISOString().slice(0,10));
+    for (const row of rows) {
+      try {
+        const fx = await this.rates.lookup({currency:row.currency,date:row.start_date});
+        this.db.prepare("UPDATE subscriptions SET purchase_date=start_date,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(original_amount_cents*?),rate_pending=0 WHERE user_id=? AND id=? AND version=? AND rate_pending=1 AND start_date=?")
+          .run(fx.rate,fx.rateDate,fx.source,fx.rate,Number(row.user_id),String(row.id),Number(row.version),String(row.start_date));
+      } catch { /* Leave explicit pending status; retry on the next scheduler pass. */ }
+    }
   }
 
   /** Atomically catch up enabled records at their due date, keeping one audit event per changed record. */
@@ -72,6 +88,7 @@ export class SubscriptionService {
           new_start_date,new_end_date,periods_advanced,created_at) VALUES(?,?,?,?,?,?,?,?)`)
           .run(Number(row.user_id),item.id,item.startDate,item.endDate,next.startDate,next.endDate,next.periods,now.getTime());
         this.history.record(Number(row.user_id),item,this.get(Number(row.user_id),item.id),anchor,anchor,"automatic",next.periods,now.getTime());
+        this.db.prepare("UPDATE subscriptions SET rate_pending=CASE WHEN currency='CNY' THEN 0 ELSE 1 END,purchase_date=start_date WHERE user_id=? AND id=?").run(Number(row.user_id),item.id);
         changed++;
       }
       return changed;
@@ -96,6 +113,7 @@ export class SubscriptionService {
           reminder_days,auto_renew,note,color,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,original_amount_cents,version,updated_at,renewal_anchor_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`)
           .run(owner,item.id,...values(item),Date.now(),billingAnchor(item));
         this.initialize(owner);
+        this.db.prepare("UPDATE subscriptions SET rate_pending=? WHERE user_id=? AND id=?").run(Number(Boolean(item.ratePending)),owner,item.id);
         return { item: this.get(owner,item.id) };
       });
     }
@@ -125,6 +143,8 @@ export class SubscriptionService {
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
           .run(String(log.previous_start_date),String(log.previous_end_date),String(log.previous_anchor_date),now,owner,item.id,item.version);
         this.db.prepare("UPDATE subscription_renewal_logs SET undone_at=?,undo_until=NULL WHERE user_id=? AND id=?").run(now,owner,input.logId);
+        this.db.prepare("UPDATE subscriptions SET purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(original_amount_cents*?),rate_pending=? WHERE user_id=? AND id=?")
+          .run(String(log.purchase_date),Number(log.fx_rate_to_cny),String(log.fx_rate_date),String(log.fx_rate_source),Number(log.fx_rate_to_cny),Number(log.previous_rate_pending),owner,item.id);
         return { item: this.get(owner,item.id), renewal: renewalFromRow(this.history.get(owner,input.logId)), undoUntil: null };
       }
       if (input.action === "delete") {
@@ -141,6 +161,7 @@ export class SubscriptionService {
           end_date=?,reminder_days=?,auto_renew=?,note=?,color=?,currency=?,purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,original_amount_cents=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?`)
           .run(...values(changed),Date.now(),owner,item.id,item.version);
         if (scheduleChanged) this.db.prepare("UPDATE subscriptions SET renewal_anchor_date=? WHERE user_id=? AND id=?").run(billingAnchor(changed),owner,item.id);
+        this.db.prepare("UPDATE subscriptions SET rate_pending=? WHERE user_id=? AND id=?").run(Number(Boolean(changed.ratePending)),owner,item.id);
       } else if (input.action === "renew") {
         const now = this.clock();
         const today = dateInTimeZone(now, this.timeZone);
@@ -152,8 +173,9 @@ export class SubscriptionService {
           .run(base,end,anchor,now.getTime(),owner,item.id,item.version);
         const updated = this.get(owner,item.id);
         const renewal = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
+        this.db.prepare("UPDATE subscriptions SET rate_pending=CASE WHEN currency='CNY' THEN 0 ELSE 1 END,purchase_date=start_date WHERE user_id=? AND id=?").run(owner,item.id);
         const log = this.history.get(owner,renewal.id);
-        return { item: updated, renewal, undoUntil: new Date(Number(log.undo_until)).toISOString() };
+        return { item: this.get(owner,item.id), renewal, undoUntil: new Date(Number(log.undo_until)).toISOString() };
       }
       return { item: this.get(owner,item.id) };
     });

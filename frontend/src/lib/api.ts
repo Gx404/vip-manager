@@ -16,7 +16,7 @@ export async function apiRequest<T>(path: string, body?: unknown): Promise<T> {
       credentials:"include", cache:"no-store",
       headers:body===undefined ? {} : { "Content-Type":"application/json","X-Requested-With":"membership-dashboard" },
       body:body===undefined ? undefined : JSON.stringify(body),
-      signal:AbortSignal.timeout(15000),
+      signal:AbortSignal.timeout(path.startsWith("/payments/") ? 120000 : 15000),
     });
   } catch {
     throw new ApiError("暂时连接不上后端，请检查服务是否运行；如刚刚提交过，请先刷新确认再重试。",0,"NETWORK_ERROR");
