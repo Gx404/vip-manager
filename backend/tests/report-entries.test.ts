@@ -97,3 +97,49 @@ test("future starts and missing rates stay out, while free subscriptions remain 
   near(report.categories.reduce((sum,c)=>sum+c.amount,0),report.total);near(report.ranking.reduce((sum,c)=>sum+c.amount,0),report.total);
   near(report.details.reduce((sum,c)=>sum+c.allocated,0),report.total);
 });
+
+test("calendar filters drive the chart and details without changing the current month/year summaries",()=>{
+  const items=[{...base,id:"current",amount:80,startDate:"2026-10-03",endDate:"2027-10-03",cycle:"yearly" as const},
+    {...base,id:"last-year",amount:20,startDate:"2025-12-20",endDate:"2026-01-20"}];
+  const older=payment(base,{paidOn:"2024-05-15"}), before=structuredClone({items,older});
+  for(const period of ["2024","2024-05","2025-12",""]) {
+    const report=paymentReport([older],items,"2026-10-11",period,"accrual");
+    assert.equal(report.recordedMonthTotal,80);assert.equal(report.recordedYearTotal,80);
+    assert.equal(report.months.length,12);
+    assert.equal(report.months[0].key,`${period.slice(0,4)||"2026"}-01`);
+    assert.equal(report.months[11].key,`${period.slice(0,4)||"2026"}-12`);
+    near(report.categories.reduce((sum,c)=>sum+c.amount,0),report.total);
+    near(report.details.reduce((sum,c)=>sum+c.allocated,0),report.total);
+  }
+  const annual=paymentReport([older],items,"2026-10-11","2024","accrual");
+  assert.equal(annual.total,31);assert.equal(annual.months[4].amount,31);
+  assert.equal(annual.months.reduce((sum,m)=>sum+m.amount,0),annual.total);
+  const all=paymentReport([older],items,"2026-10-11","","accrual");
+  assert.deepEqual(all.years.map(({key,amount})=>[key,amount]),[["2024",31],["2025",20],["2026",80]]);
+  assert.equal(all.years.reduce((sum,y)=>sum+y.amount,0),all.total);
+  assert.deepEqual({items,older},before);
+});
+
+test("this month's expected bills exclude next month, settled coverage, expired and non-monthly subscriptions",()=>{
+  const due=(id:string,date:string):Subscription=>({...base,id,amount:10,startDate:"2024-09-11",endDate:date});
+  const prepaid=due("prepaid","2024-10-25"), cancelled=due("voided","2024-10-26");
+  const paid=payment(prepaid,{paidOn:"2024-10-01",startDate:"2024-10-25",endDate:"2024-11-25"});
+  const voided=payment(cancelled,{paidOn:"2024-10-01",startDate:"2024-10-26",endDate:"2024-11-26",voidedAt:"2024-10-02T00:00:00Z"});
+  const items=[due("today","2024-10-11"),due("month-end","2024-10-31"),due("next-month","2024-11-01"),
+    due("expired","2024-10-10"),{...due("yearly","2024-10-23"),cycle:"yearly" as const},
+    {...due("quarterly","2024-10-20"),cycle:"quarterly" as const},{...due("free","2024-10-12"),amount:0},prepaid,cancelled];
+  const report=paymentReport([paid,voided],items,"2024-10-11","2024-09","accrual");
+  assert.deepEqual(report.upcoming.map(item=>[item.id,item.date]),[["today","2024-10-11"],["voided","2024-10-26"],["month-end","2024-10-31"]]);
+  assert.equal(report.forecast,30);
+  assert.equal(report.upcoming.reduce((sum,item)=>sum+(item.cny??0),0),report.forecast);
+  assert.equal(report.recordedMonthTotal,10,"expected bills do not become current spending");
+});
+
+test("expected bills use calendar boundaries for long months, leap February and December",()=>{
+  for(const [today,startDate,lastDay,nextMonth] of [["2024-01-01","2023-12-31","2024-01-31","2024-02-01"],
+    ["2024-02-01","2024-01-29","2024-02-29","2024-03-01"],["2024-12-20","2024-11-30","2024-12-31","2025-01-01"]]) {
+    const report=paymentReport([],[{...base,id:"last-day",startDate,endDate:lastDay},
+      {...base,id:"next-month",startDate:`${today.slice(0,7)}-01`,endDate:nextMonth}],today);
+    assert.deepEqual(report.upcoming.map(item=>item.date),[lastDay]);assert.equal(report.forecast,31);
+  }
+});

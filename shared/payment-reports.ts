@@ -1,7 +1,6 @@
 import type { RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
-import { monthlyCostCny, shiftDate, type Subscription } from "./subscriptions.ts";
-import { cycleBoundary } from "./billing.ts";
+import { monthlyCostCny, type Subscription } from "./subscriptions.ts";
 import { allocatedEntry, entryAmount, reportEntries, type ReportEntry } from "./report-entries.ts";
 
 export type ReportBasis = "cash" | "accrual";
@@ -33,32 +32,33 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
     }
     return [...groups.values()].sort((a,b)=>b.amount-a.amount);
   }
-  const months=Array.from({length:12},(_,n)=>{
-    const d=new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7))-12+n,1));
-    const key=d.toISOString().slice(0,7), rows=entries.filter(entry=>matches(entry,key));
+  const bucket=(key:string)=>{
+    const rows=entries.filter(entry=>matches(entry,key));
     return {key,amount:rows.reduce((n,entry)=>n+value(entry,key),0),count:rows.length};
-  });
+  };
+  // Month and year filters share the selected calendar year's January–December chart.
+  const chartYear=period.slice(0,4)||today.slice(0,4);
+  const months=Array.from({length:12},(_,n)=>bucket(`${chartYear}-${String(n+1).padStart(2,"0")}`));
+  const firstYear=Math.min(Number(today.slice(0,4)),...entries.map(entry=>Number(entry.paidOn.slice(0,4))));
+  const years=Array.from({length:Number(today.slice(0,4))-firstYear+1},(_,n)=>bucket(String(firstYear+n)));
   const upcoming:{id:string;name:string;plan:string;date:string;amount:number;currency:Subscription["currency"];cny:number|null}[]=[];
-  const until=shiftDate(today,30);
   for(const item of items) {
-    // This widget is explicitly limited to monthly bill reminders.
-    if(item.cycle !== "monthly") continue;
-    if(item.endDate<today)continue;
-    for(let n=0;n<31;n++) {
-      const date=cycleBoundary(item.endDate,item.cycle,item.customDays,n);
-      if(date>=until)break;
-      if(paid.some(log=>log.subscriptionId===item.id&&log.payment!.startDate<=date&&log.payment!.endDate>date))continue;
-      upcoming.push({id:item.id,name:item.name,plan:item.plan,date,amount:item.amount,currency:item.currency,cny:item.ratePending?null:item.amount*(item.fxRateToCny??1)});
-    }
+    // Outstanding monthly renewals stay inside this calendar month. Paid bills
+    // and next month's renewals must not reappear in the expected bill total.
+    const date=item.endDate;
+    if(item.cycle!=="monthly" || item.amount<=0 || date<today || !date.startsWith(today.slice(0,7)))continue;
+    if(paid.some(log=>log.subscriptionId===item.id&&log.payment!.startDate<=date&&log.payment!.endDate>date))continue;
+    upcoming.push({id:item.id,name:item.name,plan:item.plan,date,amount:item.amount,currency:item.currency,cny:item.ratePending?null:item.amount*(item.fxRateToCny??1)});
   }
   upcoming.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
-  const recordedYear=sources.cash.filter(entry=>entry.paidOn.startsWith(today.slice(0,4)));
+  const recordedYear=entries.filter(entry=>entry.paidOn.startsWith(today.slice(0,4)));
   const confirmedCount=selected.filter(entry=>entry.source==="payment").length, subscriptionCount=selected.length-confirmedCount;
   return {monthTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7)))),yearTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4)))),
     monthCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7))).length,yearCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4))).length,
     total:selected.reduce((n,entry)=>n+value(entry,period),0),selectedCount:selected.length,confirmedCount,subscriptionCount,details,
-    recordedYearTotal:recordedYear.reduce((n,entry)=>n+entry.amount,0),recordedYearCount:recordedYear.length,recordedYearSubscriptionCount:recordedYear.filter(entry=>entry.source==="subscription").length,
-    months,categories:group("category"),ranking:group("subscription"),
+    recordedMonthTotal:bucket(today.slice(0,7)).amount,
+    recordedYearTotal:bucket(today.slice(0,4)).amount,recordedYearCount:recordedYear.length,recordedYearSubscriptionCount:recordedYear.filter(entry=>entry.source==="subscription").length,
+    months,years,categories:group("category"),ranking:group("subscription"),
     upcoming,forecast:upcoming.reduce((n,p)=>n+(p.cny??0),0),pending:logs.filter(log=>paymentState(log)==="pending").length,
     monthly:items.filter(i=>i.endDate>=today).reduce((n,i)=>n+monthlyCostCny(i),0),ratePending:items.filter(i=>i.ratePending).length};
 }
