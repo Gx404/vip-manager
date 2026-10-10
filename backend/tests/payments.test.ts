@@ -36,7 +36,9 @@ test("historical batches use each period's rate, preserve subscriptions and skip
 test("confirmation enriches one original audit, is single-use and cannot be undone as a schedule",async t=>{
   const {db,service,item,payments}=setup();t.after(()=>db.close());
   const renewal=service.execute(1,{action:"renew",id:item.id,version:0});
-  assert.equal(paymentReport(payments.all(1),[],"2024-12-01","").total,0);
+  const pendingReport=paymentReport(payments.all(1),[],"2024-12-01","");
+  assert.equal(pendingReport.yearTotal,0);assert.equal(pendingReport.pending,1);
+  assert.equal(pendingReport.subscriptionCount,1,"the recorded previous period remains an estimate, not a confirmed payment");
   const p={...entry(renewal.item!.startDate,renewal.item!.endDate),paidOn:"2024-10-01"};
   await assert.rejects(payments.confirm(2,{id:renewal.renewal!.id,entry:p}),{status:404});
   const before=service.list(1);
