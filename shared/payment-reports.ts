@@ -1,19 +1,14 @@
 import type { RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
-import { dateNumber, monthlyCostCny, shiftDate, type Subscription } from "./subscriptions.ts";
+import { monthlyCostCny, shiftDate, type Subscription } from "./subscriptions.ts";
 import { cycleBoundary } from "./billing.ts";
-import { allocatedEntry, entryDays, reportEntries, type ReportEntry } from "./report-entries.ts";
+import { allocatedEntry, entryAmount, reportEntries, type ReportEntry } from "./report-entries.ts";
 
 export type ReportBasis = "cash" | "accrual";
-/** Allocate a confirmed payment over its service days, using an exclusive end date. */
+/** Put a confirmed payment in the month it was actually paid. */
 export function allocatedPayment(log: RenewalLog, period: string): number {
   const p=log.payment!;
-  if (!period) return paymentCny(p);
-  const start=period.length===4?`${period}-01-01`:`${period}-01`;
-  const end=new Date(Date.UTC(Number(period.slice(0,4))+(period.length===4?1:0),period.length===4?0:Number(period.slice(5,7)),1)).toISOString().slice(0,10);
-  const duration=dateNumber(p.endDate)-dateNumber(p.startDate);
-  const overlap=Math.max(0,dateNumber(p.endDate<end?p.endDate:end)-dateNumber(p.startDate>start?p.startDate:start));
-  return duration>0?paymentCny(p)*overlap/duration:0;
+  return !period || p.paidOn.startsWith(period) ? paymentCny(p) : 0;
 }
 
 /** Known subscription periods supplement the ledger; confirmed cash remains separately identifiable. */
@@ -21,8 +16,12 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
   const paid = logs.filter(log => paymentState(log)==="paid" && log.payment!.paidOn<=today);
   const sum = (rows: RenewalLog[]) => rows.reduce((n,log)=>n+paymentCny(log.payment!),0);
   const sources=reportEntries(logs,items,today), entries=sources[basis];
-  const matches=(entry:ReportEntry,key:string)=>basis==="cash"?entry.paidOn.startsWith(key):entryDays(entry,key)>0;
-  const value=(entry:ReportEntry,key:string)=>basis==="cash"?entry.amount:allocatedEntry(entry,key);
+  // Both report views use one billing bucket: a known payment belongs to its
+  // paid month, while an estimate uses the saved period start as its record
+  // month. The cash view still filters out inferred entries whose period is
+  // blocked by a pending/confirmed ledger event.
+  const matches=(entry:ReportEntry,key:string)=>!key || entry.paidOn.startsWith(key);
+  const value=(entry:ReportEntry,key:string)=>basis==="cash"?entryAmount(entry):allocatedEntry(entry,key);
   const selected=entries.filter(entry=>matches(entry,period));
   const details=selected.map(entry=>({...entry,allocated:value(entry,period)})).sort((a,b)=>b.allocated-a.allocated||a.label.localeCompare(b.label));
   function group(by: "category" | "subscription") {

@@ -106,9 +106,8 @@ test("two prepaid annual bills allocate only over each service year and remain o
   const logs=payments.all(1), cash=paymentReport(logs,[renewed.item!],"2024-10-10","2024-03");
   assert.equal(cash.total,398);assert.equal(cash.monthTotal,0);
   const accrual=paymentReport(logs,[renewed.item!],"2024-10-10","2024-10","accrual");
-  assert.ok(Math.abs(accrual.total-199*31/365)<1e-8);
-  assert.equal(accrual.selectedCount,1);assert.equal(accrual.upcoming.length,0);
-  assert.equal(accrual.categories[0].amount,accrual.total);assert.equal(accrual.ranking[0].amount,accrual.total);
+  assert.equal(accrual.total,0,"a March payment is not repeated in October");
+  assert.equal(accrual.selectedCount,0);assert.equal(accrual.upcoming.length,0);
   const first=logs.find(l=>l.payment!.startDate==="2024-03-11")!;
   const allocated=Array.from({length:13},(_,n)=>allocatedPayment(first,new Date(Date.UTC(2024,2+n,1)).toISOString().slice(0,7))).reduce((a,b)=>a+b,0);
   assert.ok(Math.abs(allocated-199)<1e-8,"allocations conserve the paid amount across month/year boundaries");

@@ -262,7 +262,7 @@ try {
   await page.getByLabel('统计月份',{exact:true}).fill('2024-05');
   await page.locator('.payment-kpis>div').first().getByText('¥25.00',{exact:true}).waitFor();
   await page.getByLabel('统计方式',{exact:true}).selectOption('accrual');
-  await page.locator('.payment-kpis>div').first().getByText('¥9.68',{exact:true}).waitFor();
+  await page.locator('.payment-kpis>div').first().getByText('¥25.00',{exact:true}).waitFor();
   assert.equal(await page.getByRole('heading',{name:'月付预计账单',exact:true}).count(),1);
   assert.equal(await page.getByRole("heading",{name:"分类支出",exact:true}).count(),1);
   await page.screenshot({path:output+"/desktop-report.png",fullPage:true});

@@ -86,7 +86,18 @@ export function entryDays(entry: ReportEntry, period: string): number {
   }, 0);
 }
 
-export function allocatedEntry(entry: ReportEntry, period: string): number {
+/**
+ * Return the amount represented by an entry after confirmed payments have
+ * covered part of its service interval. The remaining amount stays attached
+ * to the entry's payment month; it is never spread into later months.
+ */
+export function entryAmount(entry: ReportEntry): number {
   const duration = dateNumber(entry.endDate) - dateNumber(entry.startDate);
-  return duration > 0 ? entry.amount * entryDays(entry, period) / duration : 0;
+  const covered = entry.segments.reduce((days, segment) =>
+    days + Math.max(0, dateNumber(segment.endDate) - dateNumber(segment.startDate)), 0);
+  return duration > 0 ? entry.amount * Math.min(1, covered / duration) : 0;
+}
+
+export function allocatedEntry(entry: ReportEntry, period: string): number {
+  return (!period || entry.paidOn.startsWith(period)) ? entryAmount(entry) : 0;
 }

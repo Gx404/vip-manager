@@ -23,10 +23,10 @@ test("all stored cycles contribute without a separate ledger, including older ex
     {...base,id:"custom",cycle:"custom",amount:30,startDate:"2024-10-16",endDate:"2024-11-15"},
   ];
   const before=structuredClone(items), october=paymentReport([],items,"2026-10-10","2024-10","accrual");
-  assert.equal(october.ranking.length,4);assert.equal(october.selectedCount,4);assert.equal(october.total,109);
-  assert.equal(october.confirmedCount,0);assert.equal(october.subscriptionCount,4);
-  assert.equal(october.details.find(x=>x.subscriptionId==="yearly")!.allocated,31);
-  const february=paymentReport([],items,"2026-10-10","2024-02","accrual");assert.equal(february.total,29);
+  assert.equal(october.ranking.length,3);assert.equal(october.selectedCount,3);assert.equal(october.total,153);
+  assert.equal(october.confirmedCount,0);assert.equal(october.subscriptionCount,3);
+  assert.equal(october.details.find(x=>x.subscriptionId==="quarterly")!.allocated,92);
+  const february=paymentReport([],items,"2026-10-10","2024-02","accrual");assert.equal(february.total,0);
   assert.equal(paymentReport([],items,"2026-10-10","2023-12","accrual").total,0,"no invented earlier renewals");
   const cash=paymentReport([],items,"2024-10-31","2024-10","cash");assert.equal(cash.total,153);
   assert.equal(cash.yearTotal,0,"estimates must never be labeled confirmed cash");assert.equal(cash.recordedYearTotal,519);
@@ -37,13 +37,22 @@ test("all stored cycles contribute without a separate ledger, including older ex
 
 test("yearly subscription starts mid-month and older monthly backfills join the saved current month",()=>{
   const yearly={...base,id:"annual",name:"醒图",cycle:"yearly" as const,amount:108,startDate:"2026-10-03",endDate:"2027-10-03"};
-  near(paymentReport([],[yearly],"2026-10-10","2026-10","accrual").total,108*29/365);
+  assert.equal(paymentReport([],[yearly],"2026-10-10","2026-10","accrual").total,108);
   assert.equal(paymentReport([],[yearly],"2026-10-10","2026-09","accrual").total,0);
   assert.equal(paymentReport([],[yearly],"2026-10-10","2026-10","cash").total,108);
   const current={...base,startDate:"2024-10-20",endDate:"2024-11-20"};
   const previous=payment({...base,startDate:"2024-09-20",endDate:"2024-10-20"},{amount:60});
   const report=paymentReport([previous],[current],"2024-10-31","2024-10","accrual");
-  near(report.total,60*19/30+31*12/31);assert.equal(report.selectedCount,2);
+  assert.equal(report.total,31);assert.equal(report.selectedCount,1);
+  assert.equal(paymentReport([previous],[current],"2024-10-31","2024-09","accrual").total,60);
+});
+
+test("a service period is recorded once in its payment month, even when it spans two calendar months",()=>{
+  const september={...base,id:"september",name:"百度云网盘",cycle:"yearly" as const,amount:198,startDate:"2026-09-04",endDate:"2027-09-04"};
+  assert.equal(paymentReport([],[september],"2026-10-10","2026-09","accrual").total,198);
+  assert.equal(paymentReport([],[september],"2026-10-10","2026-10","accrual").total,0);
+  const future={...base,id:"future-monthly",startDate:"2026-10-26",endDate:"2026-11-26"};
+  assert.equal(paymentReport([],[future],"2026-10-10","2026-10","accrual").total,0,"a future renewal date is not an October payment");
 });
 
 test("actual payment replaces estimates, with different original currency rates and corrected payment dates",()=>{
@@ -51,7 +60,7 @@ test("actual payment replaces estimates, with different original currency rates 
   const log=payment(foreign,{currency:"USD",amount:9,rate:6,paidOn:"2024-09-30"});
   const before=structuredClone(log);
   const report=paymentReport([log],[foreign],"2024-10-31","2024-10","accrual");
-  assert.equal(report.total,54);assert.equal(report.selectedCount,1);assert.equal(report.subscriptionCount,0);
+  assert.equal(report.total,0);assert.equal(report.selectedCount,0);assert.equal(report.subscriptionCount,0);
   assert.equal(paymentReport([log],[foreign],"2024-10-31","2024-10","cash").total,0);
   assert.equal(paymentReport([log],[foreign],"2024-10-31","2024-09","cash").total,54);
   assert.deepEqual(log,before);
