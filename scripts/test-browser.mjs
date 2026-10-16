@@ -257,36 +257,42 @@ try {
   await page.getByRole("button",{name:"支出分析",exact:true}).click();
   await page.getByRole("heading",{name:"支出分析",exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('.payment-kpis strong')?.textContent!=='—');
-  const currentTotals=await page.locator('.payment-kpis strong').allTextContents();
-  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['本月消费金额','本年消费金额','本月预计付费账单']);
+  const initialMonth=await page.getByLabel('统计月份',{exact:true}).inputValue();
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),[`${Number(initialMonth.slice(5))}月消费`,`${initialMonth.slice(0,4)}年消费`,'本月预计付费账单']);
   assert.equal(await page.locator('.payment-kpis small,.chart-caption,.chart-track em').count(),0);
   assert.equal(await page.getByLabel('统计方式',{exact:true}).count(),0);
   assert.equal(await page.getByText('按订阅记录',{exact:true}).count(),0);
   await page.getByLabel('统计月份',{exact:true}).fill('2024-06');
   await page.locator('.report-period-total').getByText('¥30.00',{exact:true}).waitFor();
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['6月消费','2024年消费','本月预计付费账单']);
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥30.00','¥55.00']);
   assert.equal(await page.getByRole('heading',{name:'2024 年消费趋势',exact:true}).count(),1);
   assert.equal(await page.locator('.chart-column').count(),12);
   assert.equal(await page.locator('.chart-column').first().getAttribute('data-period'),'2024-01');
   assert.equal(await page.locator('.chart-column').last().getAttribute('data-period'),'2024-12');
   assert.equal(await page.locator('[data-period="2024-01"] .chart-track>*').count(),0);
-  assert.equal(await page.locator('[data-period="2024-01"] .chart-value').innerText(),'');
+  assert.equal(await page.locator('[data-period="2024-01"] .chart-value').count(),0);
   await page.getByLabel('统计月份',{exact:true}).fill('2024-05');
   await page.locator('.report-period-total').getByText('¥25.00',{exact:true}).waitFor();
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['5月消费','2024年消费','本月预计付费账单']);
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥25.00','¥55.00']);
   await page.getByLabel('统计范围',{exact:true}).selectOption('year');
   assert.equal(await page.getByLabel('统计年份',{exact:true}).inputValue(),'2024');
   await page.locator('.report-period-total').getByText('¥55.00',{exact:true}).waitFor();
-  assert.deepEqual(await page.locator('.payment-kpis strong').allTextContents(),currentTotals);
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['5月消费','2024年消费','本月预计付费账单']);
   await page.locator('[data-period="2024-06"]').click();
   assert.equal(await page.getByLabel('统计月份',{exact:true}).inputValue(),'2024-06');
   await page.locator('.report-period-total').getByText('¥30.00',{exact:true}).waitFor();
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥30.00','¥55.00']);
   await page.getByLabel('统计范围',{exact:true}).selectOption('all');
   assert.equal(await page.getByRole('heading',{name:'历年消费趋势',exact:true}).count(),1);
   await page.locator('[data-period="2024"]').click();
   assert.equal(await page.getByLabel('统计范围',{exact:true}).inputValue(),'year');
   await page.locator('.report-period-total').getByText('¥55.00',{exact:true}).waitFor();
-  assert.deepEqual(await page.locator('.payment-kpis strong').allTextContents(),currentTotals);
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['1月消费','2024年消费','本月预计付费账单']);
   assert.equal(await page.getByRole('heading',{name:'本月预计付费账单',exact:true}).count(),1);
-  assert.equal(await page.getByRole("heading",{name:"分类支出",exact:true}).count(),1);
+  assert.equal(await page.locator('.report-details-layout').count(),1);
+  assert.equal(await page.getByRole("heading",{name:/订阅费用明细/}).count(),1);
   await page.screenshot({path:output+"/desktop-report.png",fullPage:true});
   for(const width of [320,390,768]){
     await page.setViewportSize({width,height:900});
@@ -294,7 +300,7 @@ try {
     assert.ok(layout.scroll<=layout.width,JSON.stringify(layout));
     await page.screenshot({path:output+`/report-${width}.png`,fullPage:true});
   }
-  console.log('PASS fixed current totals, calendar month/year chart drill-down, clean empty bars and report labels');
+  console.log('PASS selected month/year totals, calendar chart drill-down, bar-top labels and full-width details');
   await page.getByRole("button",{name:"返回订阅",exact:true}).click();
   await page.getByTitle("紧凑列表视图").click();
   for(const width of [320,375,390,768]){
@@ -422,6 +428,7 @@ try {
   if(server)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
   db.close();
 }
+
 
 
 

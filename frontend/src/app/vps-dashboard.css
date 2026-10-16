@@ -173,8 +173,8 @@ body { font-size: 14px; }
 .report-context, .report-kpis span, .report-kpis small, .report-list small, .report-bar-row small, .report-ranked em, .analysis-filter small, .ledger-empty, .chart-column { color: var(--muted-foreground); }
 .payment-kpis .forecast-kpi { background: var(--surface); }
 .report-list li, .chart-track { border-color: var(--border); }
-.chart-track i { background: #80b99e; }
-.chart-column.selected .chart-track i, .chart-column:hover .chart-track i { background: var(--success); }
+.chart-bar i { background: #80b99e; }
+.chart-column.selected .chart-bar i, .chart-column:hover .chart-bar i { background: var(--success); }
 .chart-column.selected small { color: var(--success); }
 .upcoming-list time { color: var(--text-secondary); background: var(--secondary); }
 .report-bar-row > div { background: var(--progress-track); }
@@ -323,3 +323,4 @@ body { font-size: 14px; }
   .subscription-card .service-logo { --logo-size: 40px; }
   .subscription-row .service-logo { --logo-size: 32px; }
 }
+
