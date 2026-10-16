@@ -258,32 +258,36 @@ try {
   await page.getByRole("heading",{name:"支出分析",exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('.payment-kpis strong')?.textContent!=='—');
   const initialMonth=await page.getByLabel('统计月份',{exact:true}).inputValue();
-  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),[`${initialMonth.slice(0,4)}年消费`,`${Number(initialMonth.slice(5))}月消费`]);
+  const initialYear=await page.getByLabel('统计年份',{exact:true}).inputValue();
+  assert.equal(await page.getByLabel('统计月份',{exact:true}).locator('option').count(),12);
+  assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),[`${initialYear}年消费`,`${Number(initialMonth)}月消费`]);
   assert.equal(await page.locator('.payment-kpis small,.chart-caption,.chart-track em').count(),0);
   assert.equal(await page.getByLabel('统计方式',{exact:true}).count(),0);
   assert.equal(await page.getByText('按订阅记录',{exact:true}).count(),0);
-  await page.getByLabel('统计月份',{exact:true}).fill('2024-06');
+  await page.getByLabel('统计年份',{exact:true}).selectOption('2024');
+  await page.getByLabel('统计月份',{exact:true}).selectOption('06');
   await page.locator('.report-period-total').getByText('¥30.00',{exact:true}).waitFor();
   assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['2024年消费','6月消费']);
-  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥30.00','¥55.00']);
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥55.00','¥30.00']);
   assert.equal(await page.getByRole('heading',{name:'2024 年消费趋势',exact:true}).count(),1);
   assert.equal(await page.locator('.chart-column').count(),12);
   assert.equal(await page.locator('.chart-column').first().getAttribute('data-period'),'2024-01');
   assert.equal(await page.locator('.chart-column').last().getAttribute('data-period'),'2024-12');
   assert.equal(await page.locator('[data-period="2024-01"] .chart-track>*').count(),0);
   assert.equal(await page.locator('[data-period="2024-01"] .chart-value').count(),0);
-  await page.getByLabel('统计月份',{exact:true}).fill('2024-05');
+  await page.getByLabel('统计月份',{exact:true}).selectOption('05');
   await page.locator('.report-period-total').getByText('¥25.00',{exact:true}).waitFor();
   assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['2024年消费','5月消费']);
-  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥25.00','¥55.00']);
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥55.00','¥25.00']);
   await page.getByLabel('统计范围',{exact:true}).selectOption('year');
   assert.equal(await page.getByLabel('统计年份',{exact:true}).inputValue(),'2024');
   await page.locator('.report-period-total').getByText('¥55.00',{exact:true}).waitFor();
   assert.deepEqual(await page.locator('.payment-kpis>div>span').allTextContents(),['2024年消费','5月消费']);
   await page.locator('[data-period="2024-06"]').click();
-  assert.equal(await page.getByLabel('统计月份',{exact:true}).inputValue(),'2024-06');
+  assert.equal(await page.getByLabel('统计年份',{exact:true}).inputValue(),'2024');
+  assert.equal(await page.getByLabel('统计月份',{exact:true}).inputValue(),'06');
   await page.locator('.report-period-total').getByText('¥30.00',{exact:true}).waitFor();
-  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥30.00','¥55.00']);
+  assert.deepEqual((await page.locator('.payment-kpis strong').allTextContents()).slice(0,2),['¥55.00','¥30.00']);
   await page.getByLabel('统计范围',{exact:true}).selectOption('all');
   assert.equal(await page.getByRole('heading',{name:'历年消费趋势',exact:true}).count(),1);
   await page.locator('[data-period="2024"]').click();
@@ -429,7 +433,6 @@ try {
   if(server)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
   db.close();
 }
-
 
 
 

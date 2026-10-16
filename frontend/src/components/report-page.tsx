@@ -42,12 +42,12 @@ export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
           <h3><TrendingUp size={16}/>{range==="all"?"历年消费趋势":`${year} 年消费趋势`}</h3>
           <div className="analysis-controls">
             <select aria-label="统计范围" value={range} onChange={e=>setRange(e.target.value)}><option value="month">按月查看</option><option value="year">按年查看</option><option value="all">全部记录</option></select>
-            {range==="month"&&<input aria-label="统计月份" type="month" min="1900-01" max="2200-12" value={month} onChange={e=>setMonth(e.target.value)}/>}
-            {range==="year"&&<select aria-label="统计年份" value={year} onChange={e=>setMonth(`${e.target.value}-${selectedMonth.slice(5)}`)}>{availableYears.map(value=><option key={value} value={value}>{value} 年</option>)}</select>}
+            {range!=="all"&&<select aria-label="统计年份" value={year} onChange={e=>setMonth(`${e.target.value}-${selectedMonth.slice(5)}`)}>{availableYears.map(value=><option key={value} value={value}>{value}年</option>)}</select>}
+            {range==="month"&&<select aria-label="统计月份" value={selectedMonth.slice(5)} onChange={e=>setMonth(`${year}-${e.target.value}`)}>{Array.from({length:12},(_,index)=><option key={index} value={String(index+1).padStart(2,"0")}>{index+1}月</option>)}</select>}
           </div>
         </div>
         <div className="chart-scroll"><div className="payment-chart" aria-label={range==="all"?"历年消费金额":`${year} 年每月消费金额`} style={{gridTemplateColumns:`repeat(${chart.length},minmax(0,1fr))`,minWidth:chart.length>12?`${chart.length*42}px`:undefined}}>
-          {chart.map(row=><button key={row.key} data-period={row.key} className={`chart-column${range==="month"&&selectedMonth===row.key?" selected":""}`} onClick={()=>selectBar(row.key)} title={`${row.key}：${ready?money(row.amount):"正在读取"}`} aria-label={`${row.key}，${ready?money(row.amount):"正在读取"}`}>
+          {chart.map(row=><button key={row.key} data-period={row.key} className={`chart-column${range==="month"&&selectedMonth===row.key?" selected":""}`} onClick={()=>selectBar(row.key)} title={`${row.key}：${ready?money(row.amount):"正在读取"}`} aria-label={`${row.key}，${ready?money(row.amount):"正在读取"}`} aria-pressed={range==="month"&&selectedMonth===row.key}>
             <span className="chart-track">{ready&&row.amount>0&&<span className="chart-bar" style={{height:`${Math.max(3,row.amount/max*100)}%`}}><i/><span className="chart-value">{Math.round(row.amount)}</span></span>}</span>
             <small>{range==="all"?`${row.key}年`:`${Number(row.key.slice(5))}月`}</small>
           </button>)}
@@ -62,4 +62,3 @@ export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
     </div>
   </section>;
 }
-

@@ -329,8 +329,8 @@ body { font-size: 14px; }
   .spending-page .report-primary { align-items: start; }
   .spending-page .trend-section,
   .spending-page .report-details {
-    height: 420px;
-    min-height: 420px;
+    height: 360px;
+    min-height: 360px;
   }
   .spending-page .report-details {
     display: flex;
@@ -355,6 +355,90 @@ body { font-size: 14px; }
     display: block;
     overflow: visible;
   }
+}
+
+/* Simple calendar selects and a chart that fills its card without an empty footer. */
+.spending-page .trend-section {
+  display: flex;
+  flex-direction: column;
+}
+.spending-page .report-filter .analysis-controls {
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+.spending-page .report-filter .analysis-controls select {
+  flex: 0 1 auto;
+  width: auto;
+  min-height: 34px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.spending-page .trend-section .chart-scroll {
+  flex: 1;
+  min-height: 0;
+  margin-top: 14px;
+  overflow-y: hidden;
+}
+.spending-page .payment-chart {
+  height: 100%;
+  margin-top: 0;
+  padding-top: 20px;
+  gap: 6px;
+}
+.spending-page .chart-column {
+  position: relative;
+  border-radius: 7px;
+  padding: 0 2px 4px;
+  gap: 10px;
+  transition: background-color .15s ease;
+}
+.spending-page .chart-column:hover {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.spending-page .chart-column.selected {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.spending-page .chart-track {
+  border-bottom: 1px solid var(--border-strong);
+  background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), color-mix(in srgb, var(--border) 55%, transparent) calc(25% - 1px), color-mix(in srgb, var(--border) 55%, transparent) 25%);
+}
+.spending-page .chart-bar {
+  width: 62%;
+  max-width: 36px;
+}
+.spending-page .chart-bar i {
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 58%, var(--surface)), color-mix(in srgb, var(--primary) 30%, var(--surface)));
+  box-shadow: inset 0 1px 0 #ffffff26;
+}
+.spending-page .chart-column:hover .chart-bar i,
+.spending-page .chart-column.selected .chart-bar i {
+  background: linear-gradient(180deg, var(--primary), color-mix(in srgb, var(--primary) 70%, var(--accent)));
+}
+.spending-page .chart-column.selected small,
+.spending-page .chart-column.selected .chart-value {
+  color: var(--accent-foreground);
+  font-weight: 700;
+}
+.spending-page .chart-value {
+  bottom: calc(100% + 8px);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.spending-page .chart-column:focus-visible {
+  outline-color: var(--ring);
+  outline-offset: 2px;
+}
+@media (max-width: 900px) {
+  .spending-page .trend-section .chart-scroll { flex: none; height: 240px; }
+}
+@media (max-width: 560px) {
+  .spending-page .report-filter .analysis-controls select { flex: 1 1 auto; }
+  .spending-page .payment-chart { gap: 2px; }
+  .spending-page .chart-column { padding-inline: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spending-page .chart-column { transition: none; }
 }
 
 /* The monthly context is a compact utility row rather than a full-width strip. */
