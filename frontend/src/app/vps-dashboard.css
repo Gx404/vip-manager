@@ -324,3 +324,91 @@ body { font-size: 14px; }
   .subscription-row .service-logo { --logo-size: 32px; }
 }
 
+/* Spending reports keep both panels stable while the selected period changes. */
+@media (min-width: 901px) {
+  .spending-page .report-primary { align-items: start; }
+  .spending-page .trend-section,
+  .spending-page .report-details {
+    height: 420px;
+    min-height: 420px;
+  }
+  .spending-page .report-details {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .spending-page .report-details .report-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .spending-page .trend-section,
+  .spending-page .report-details {
+    height: auto;
+    min-height: 0;
+  }
+  .spending-page .report-details {
+    display: block;
+    overflow: visible;
+  }
+}
+
+/* Make the report controls read as interactive controls in both themes. */
+.spending-page .analysis-controls {
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--secondary));
+}
+.spending-page .analysis-controls select,
+.spending-page .analysis-controls input {
+  cursor: pointer;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .08s ease;
+}
+.spending-page .analysis-controls select:hover,
+.spending-page .analysis-controls input:hover {
+  color: var(--foreground);
+  background: var(--secondary) !important;
+  border-color: var(--border-strong) !important;
+}
+.spending-page .analysis-controls select:focus-visible,
+.spending-page .analysis-controls input:focus-visible {
+  color: var(--foreground);
+  border-color: var(--ring) !important;
+  outline: 2px solid color-mix(in srgb, var(--ring) 45%, transparent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 14%, transparent);
+}
+.spending-page .analysis-controls select:active,
+.spending-page .analysis-controls input:active {
+  transform: translateY(1px);
+}
+
+/* The monthly context is a compact utility row rather than a full-width strip. */
+.spending-page .report-context {
+  margin: -8px 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--secondary));
+  color: var(--muted-foreground);
+}
+.spending-page .report-context b { color: var(--foreground); font-variant-numeric: tabular-nums; }
+.spending-page .report-context .text-action {
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 7px;
+  transition: background-color .16s ease, color .16s ease, transform .08s ease;
+}
+.spending-page .report-context .text-action:hover { background: var(--secondary); color: var(--foreground); }
+.spending-page .report-context .text-action:active { transform: translateY(1px); }
+@media (max-width: 560px) {
+  .spending-page .report-context { margin: -4px 0 12px; }
+  .spending-page .report-context .text-action { align-self: flex-start; }
+}
+

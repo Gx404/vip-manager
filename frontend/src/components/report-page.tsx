@@ -31,11 +31,11 @@ export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
   return <section className="report-page spending-page" aria-label="支出分析">
     <div className="report-heading"><div><p className="report-eyebrow">订阅费用 · 一目了然</p><h2>支出分析</h2><p className="muted">看清已经花了多少，以及订阅费用明细。</p></div><button className="button light" onClick={onBack}><ArrowLeft size={16}/>返回订阅</button></div>
     {error&&<div role="alert" className="sync-banner">{error}<button className="text-action" onClick={()=>setRetry(n=>n+1)}>重新读取</button></div>}
+    <div className="report-context"><span>月均支出 <b>{money(report.monthly)}</b>{report.ratePending?`（${report.ratePending} 项汇率待补全，未计入）`:""} · 按当前有效订阅摊算</span><button className="text-action" onClick={()=>onHistory()}>管理流水{report.pending>0?` · ${report.pending} 笔待确认`:""}<ArrowUpRight size={14}/></button></div>
     <div className="report-kpis payment-kpis spending-kpis">
       <div><span>{selectedYearLabel}</span><strong>{ready?money(selectedYearTotal):"—"}</strong></div>
       <div><span>{selectedMonthLabel}</span><strong>{ready?money(selectedMonthTotal):"—"}</strong></div>
     </div>
-    <div className="report-context"><span>当前订阅月均约 <b>{money(report.monthly)}</b>{report.ratePending?`（${report.ratePending} 项汇率待补全，未计入）`:""} · 外币为参考折算</span><button className="text-action" onClick={()=>onHistory()}>管理流水{report.pending>0?` · ${report.pending} 笔待确认`:""}<ArrowUpRight size={14}/></button></div>
     <div className="report-columns report-primary">
       <section className="report-section trend-section" aria-label="消费趋势">
         <div className="analysis-filter report-filter">
