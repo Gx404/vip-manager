@@ -160,7 +160,7 @@
 @media(max-width:560px){.report-details .report-list{max-height:none;overflow:visible;scrollbar-gutter:auto}.report-details .report-list li{padding-right:0}}
 
 /* Calendar filters drive the chart, details and selected-period totals. */
-.payment-kpis>div{min-height:112px;display:flex;flex-direction:column;justify-content:center}
+.payment-kpis>div{min-height:112px;display:flex;flex-direction:column;justify-content:center}.spending-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
 .payment-kpis strong{margin:12px 0 0;font-variant-numeric:tabular-nums}
 .spending-page .report-filter{margin:0;flex-wrap:wrap;gap:12px}
 .spending-page .report-filter h3{margin:0;white-space:nowrap}
@@ -172,8 +172,9 @@
 .upcoming-list{max-height:300px}
 .chart-column:focus-visible{outline:2px solid #238468;outline-offset:2px;border-radius:4px}
 .report-detail-heading{flex-direction:row;align-items:center}
-.report-period-total{font-size:20px;font-variant-numeric:tabular-nums;color:#233c32}.report-details-layout{grid-template-columns:1fr}
+.report-period-total{font-size:20px;font-variant-numeric:tabular-nums;color:#233c32}.report-details-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.report-details-heading h3{margin:0}.report-details-heading small{display:block;margin-top:5px;color:#819085;font-size:12px}.report-details-layout{grid-template-columns:1fr}
 @media(max-width:560px){
+  .spending-kpis{grid-template-columns:1fr}
   .payment-kpis>div{min-height:0;display:flex;flex-direction:row;justify-content:space-between;gap:12px}
   .payment-kpis>div>strong{margin:0;font-size:25px;white-space:nowrap}
   .payment-kpis>div>span{font-size:13px}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, CalendarDays, TrendingUp } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, TrendingUp } from "lucide-react";
 import { money } from "../../../shared/currency.ts";
 import { paymentReport } from "../../../shared/payment-reports.ts";
 import type { Subscription } from "@/lib/subscriptions";
@@ -29,12 +29,11 @@ export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
     else {setRange("month");setMonth(key);}
   }
   return <section className="report-page spending-page" aria-label="支出分析">
-    <div className="report-heading"><div><p className="report-eyebrow">订阅费用 · 一目了然</p><h2>支出分析</h2><p className="muted">看清已经花了多少，以及接下来需要准备多少。</p></div><button className="button light" onClick={onBack}><ArrowLeft size={16}/>返回订阅</button></div>
+    <div className="report-heading"><div><p className="report-eyebrow">订阅费用 · 一目了然</p><h2>支出分析</h2><p className="muted">看清已经花了多少，以及订阅费用明细。</p></div><button className="button light" onClick={onBack}><ArrowLeft size={16}/>返回订阅</button></div>
     {error&&<div role="alert" className="sync-banner">{error}<button className="text-action" onClick={()=>setRetry(n=>n+1)}>重新读取</button></div>}
-    <div className="report-kpis payment-kpis">
-      <div><span>{selectedMonthLabel}</span><strong>{ready?money(selectedMonthTotal):"—"}</strong></div>
+    <div className="report-kpis payment-kpis spending-kpis">
       <div><span>{selectedYearLabel}</span><strong>{ready?money(selectedYearTotal):"—"}</strong></div>
-      <div className="forecast-kpi"><span>本月预计付费账单</span><strong>{ready?money(report.forecast):"—"}</strong></div>
+      <div><span>{selectedMonthLabel}</span><strong>{ready?money(selectedMonthTotal):"—"}</strong></div>
     </div>
     <div className="report-context"><span>当前订阅月均约 <b>{money(report.monthly)}</b>{report.ratePending?`（${report.ratePending} 项汇率待补全，未计入）`:""} · 外币为参考折算</span><button className="text-action" onClick={()=>onHistory()}>管理流水{report.pending>0?` · ${report.pending} 笔待确认`:""}<ArrowUpRight size={14}/></button></div>
     <div className="report-columns report-primary">
@@ -54,17 +53,12 @@ export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
           </button>)}
         </div></div>
       </section>
-      <section className="report-section upcoming-section">
-        <div className="ledger-subheading"><h3><CalendarDays size={16}/>本月预计付费账单</h3></div>
-        <ul className="report-list upcoming-list">{ready&&report.upcoming.map(item=><li key={`${item.id}-${item.date}`}><time>{item.date.slice(5).replace("-","/")}</time><span><strong>{item.name}</strong>{item.plan&&<small>{item.plan}</small>}</span><b>{money(item.amount,item.currency)}</b></li>)}</ul>
-        {(!ready||!report.upcoming.length)&&<p className="ledger-empty">{loading?"正在读取…":error?"账单读取失败":"本月暂无待付账单。"}</p>}
+      <section className="report-section report-details" aria-label="订阅费用明细">
+        <div className="report-details-heading"><div><h3>费用明细</h3><small>{periodLabel}</small></div><b className="report-period-total">{ready?money(report.total):"—"}</b></div>
+        <ul className="report-list">{ready&&report.details.map((r,n)=><li key={r.id} data-source={r.source}>
+          <span className="report-ranked"><em>{n+1}</em><ServiceLogo name={r.label} color={items.find(i=>i.id===r.subscriptionId)?.color??"#269979"}/><span><strong>{r.label}</strong>{r.plan&&<small>{r.plan}</small>}<small>{r.startDate} — {r.endDate}</small></span></span><b>{money(r.allocated)}</b>
+        </li>)}</ul>{ready&&!report.details.length&&<p className="ledger-empty">这段时间暂无消费记录。</p>}
       </section>
-    </div>
-    <div className="analysis-filter report-detail-heading"><div><strong>费用明细</strong><small>{periodLabel}</small></div><b className="report-period-total">{ready?money(report.total):"—"}</b></div>
-    <div className="report-columns report-details-layout">
-      <section className="report-section report-details" aria-label="订阅费用明细"><h3>订阅费用明细 · {report.details.length} 项</h3><ul className="report-list">{ready&&report.details.map((r,n)=><li key={r.id} data-source={r.source}>
-        <span className="report-ranked"><em>{n+1}</em><ServiceLogo name={r.label} color={items.find(i=>i.id===r.subscriptionId)?.color??"#269979"}/><span><strong>{r.label}</strong>{r.plan&&<small>{r.plan}</small>}<small>{r.startDate} — {r.endDate}</small></span></span><b>{money(r.allocated)}</b>
-      </li>)}</ul>{ready&&!report.details.length&&<p className="ledger-empty">这段时间暂无消费记录。</p>}</section>
     </div>
   </section>;
 }
