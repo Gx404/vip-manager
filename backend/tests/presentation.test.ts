@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { occupiedCategories, dueWithin, progressColor, periodPercentage } from "../../shared/presentation.ts";
+import { occupiedCategories, dueWithin, progressColor, periodPercentage, progressLayers } from "../../shared/presentation.ts";
 import { monthlyCost, type Subscription } from "../../shared/subscriptions.ts";
 import { brands, matchBrand } from "../../shared/brands.ts";
 
@@ -54,6 +54,15 @@ test("progress colors run from empty red to full teal, interpolate and clamp saf
   const monthly = periodPercentage(record, "2026-09-16");
   const yearly = periodPercentage({ startDate: "2026-01-01", endDate: "2027-01-01" }, "2026-07-02");
   assert.equal(progressColor(monthly), progressColor(yearly), "equivalent fractions use the same color across billing cycles");
+});
+
+test("progress layers keep the current cycle full and show prepaid time in a second layer", () => {
+  assert.deepEqual(progressLayers(42), { primary: 42, overflow: 0 });
+  assert.deepEqual(progressLayers(100), { primary: 100, overflow: 0 });
+  assert.deepEqual(progressLayers(142), { primary: 100, overflow: 42 });
+  assert.deepEqual(progressLayers(250), { primary: 100, overflow: 100 });
+  assert.deepEqual(progressLayers(-1), { primary: 0, overflow: 0 });
+  assert.deepEqual(progressLayers(Number.NaN), { primary: 0, overflow: 0 });
 });
 
 test("subscription names recognize Chinese/English/full-width aliases, while unknown services fall back", () => {

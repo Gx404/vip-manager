@@ -100,7 +100,7 @@ test("two prepaid annual bills allocate only over each service year and remain o
   assert.equal(periodPercentage(renewed.item!,"2024-10-10"),142,"prepaid remaining time can exceed one current yearly cycle");
   assert.equal(periodPercentage(renewed.item!,"2025-03-11"),100,"a new yearly cycle starts at full progress");
   assert.equal(service.listPublic()[0].coverageStartDate,"2024-03-11");
-  assert.equal(defaultPaymentDate(renewed.renewal!,"2024-10-10"),"","prepayment requires its actual payment date");
+  assert.equal(defaultPaymentDate(renewed.renewal!,"2024-10-10"),"2024-10-10","future periods can be confirmed on the actual charge date");
   await payments.confirm(1,{id:renewed.renewal!.id,entry:{...entry("2025-03-11","2026-03-11"),amount:199,currency:"CNY",paidOn:"2024-03-11"}});
   await payments.add(1,{subscriptionId:item.id,entries:[{...entry("2024-03-11","2025-03-11"),amount:199,currency:"CNY",paidOn:"2024-03-11"}]});
   const logs=payments.all(1), cash=paymentReport(logs,[renewed.item!],"2024-10-10","2024-03");

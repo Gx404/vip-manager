@@ -32,6 +32,15 @@ export function progressColor(percentage: number): string {
   return progressStops[progressStops.length - 1][1];
 }
 
+/** Split a remaining percentage into the current cycle and one prepaid overflow layer. */
+export function progressLayers(percentage: number): { primary: number; overflow: number } {
+  if (!Number.isFinite(percentage) || percentage <= 0) return { primary: 0, overflow: 0 };
+  return {
+    primary: Math.min(100, percentage),
+    overflow: Math.min(100, Math.max(0, percentage - 100)),
+  };
+}
+
 /** Return remaining time against the current billing cycle; prepaid extra cycles may exceed 100%. */
 export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate" | "coverageStartDate"> & Partial<Pick<Subscription, "cycle" | "customDays">>, today: string): number {
   const cycleEnd = item.cycle ? renewDate(item.startDate, item.cycle, item.customDays ?? 0) : item.endDate;

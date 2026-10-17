@@ -13,7 +13,15 @@ export function paymentState(log: RenewalLog): "paid" | "pending" | "void" {
   return log.undoneAt || log.payment?.voidedAt ? "void" : log.payment ? "paid" : "pending";
 }
 export function paymentCny(payment: Payment): number { return payment.amount * payment.rate; }
-/** Future service dates cannot stand in for an actual prepayment date. */
+/**
+ * Pick a usable date for the explicit confirmation form.
+ *
+ * A pending renewal is only a schedule until the user presses "确认已支付";
+ * therefore a future service start may safely default to today's date here.
+ * The user can still replace it with the actual charge date before submitting,
+ * and the server rejects dates in the future and keeps the ledger pending
+ * until that explicit confirmation.
+ */
 export function defaultPaymentDate(log: RenewalLog, today: string): string {
-  return log.payment?.paidOn ?? (log.newStartDate <= today ? log.newStartDate : "");
+  return log.payment?.paidOn ?? (log.newStartDate <= today ? log.newStartDate : today);
 }

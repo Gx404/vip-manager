@@ -151,6 +151,41 @@ body { font-size: 14px; }
 .subscription-card .segments { height: 7px !important; border-radius: 1px !important; background: var(--progress-track) !important; mask-image: repeating-linear-gradient(to right,#000 0, #000 calc(4.1667% - 2px),transparent calc(4.1667% - 2px),transparent 4.1667%); }
 .subscription-card .segments [data-slot="progress-indicator"] { border-radius: 1px; }
 .subscription-card .segments.is-empty { background: var(--danger-bg) !important; }
+/* Prepaid time uses a second, stacked layer once the current billing cycle is full. */
+.subscription-card .segments.has-overflow {
+  height: 13px !important;
+  background: transparent !important;
+  mask-image: none;
+  overflow: hidden;
+}
+.subscription-card .segments.has-overflow::before,
+.subscription-card .segments.has-overflow::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--progress-track);
+}
+.subscription-card .segments.has-overflow::before { top: 0; }
+.subscription-card .segments.has-overflow::after { bottom: 0; }
+.subscription-card .segments.has-overflow [data-slot="progress-indicator"],
+.subscription-card .segments.has-overflow [data-slot="progress-overflow-indicator"] {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 5px;
+  flex: none;
+  border-radius: 1px;
+  transform-origin: left center;
+}
+.subscription-card .segments.has-overflow [data-slot="progress-indicator"] { top: 0; }
+.subscription-card .segments.has-overflow [data-slot="progress-overflow-indicator"] {
+  top: auto;
+  bottom: 0;
+  background: var(--overflow-color) !important;
+}
 .membership-expiry { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 13px; margin-top: 14px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; }
 .membership-expiry span { display: inline-flex; align-items: center; gap: 5px; }
 .membership-expiry time { font-variant-numeric: tabular-nums; }
