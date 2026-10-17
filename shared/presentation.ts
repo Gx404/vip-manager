@@ -1,4 +1,4 @@
-import { categories, dateNumber, remaining, type Subscription } from "./subscriptions.ts";
+import { categories, dateNumber, remaining, renewDate, type Subscription } from "./subscriptions.ts";
 
 /** Return only occupied categories, in the configured order; the editor still offers every category. */
 export function occupiedCategories(items: Pick<Subscription, "category">[]): { category: typeof categories[number]; count: number }[] {
@@ -32,11 +32,11 @@ export function progressColor(percentage: number): string {
   return progressStops[progressStops.length - 1][1];
 }
 
-/** Return the entered period's remaining percentage, clamped to 0–100 for both label and bar. */
-export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate" | "coverageStartDate">, today: string): number {
-  const total = dateNumber(item.endDate) - dateNumber(item.coverageStartDate ?? item.startDate);
+/** Return remaining time against the current billing cycle; prepaid extra cycles may exceed 100%. */
+export function periodPercentage(item: Pick<Subscription, "startDate" | "endDate" | "coverageStartDate"> & Partial<Pick<Subscription, "cycle" | "customDays">>, today: string): number {
+  const cycleEnd = item.cycle ? renewDate(item.startDate, item.cycle, item.customDays ?? 0) : item.endDate;
+  const total = dateNumber(cycleEnd) - dateNumber(item.startDate);
   const days = dateNumber(item.endDate) - dateNumber(today);
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(days)) return 0;
-  const left = Math.max(0, Math.min(total, days));
-  return Math.round(left / total * 100);
+  return Math.round(Math.max(0, days) / total * 100);
 }

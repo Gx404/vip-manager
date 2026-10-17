@@ -11,11 +11,12 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
   const days = remaining(item, today);
   const status = stateOf(item, today);
   const progress = periodPercentage(item, today);
+  const progressValue = Math.min(100, Math.max(0, progress));
   const metadata = [item.plan, item.category].filter(Boolean).join(" · ");
-  // Calendar days decide expiry; a long period can round to 0% while it is still active.
+  // Calendar days decide expiry; the visual bar caps at 100% while the label keeps prepaid extra time.
   const statusLabel = days < 0 ? "已到期" : days === 0 ? "今日到期" : status === "soon" ? "即将到期" : null;
-  const periodLabel = item.coverageStartDate ? "总时长剩余" : "本期剩余";
-  const progressLabel = `${item.name}：${periodLabel} ${progress}%，${item.coverageStartDate ?? item.startDate} 至 ${item.endDate}，${days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今日到期" : `距到期 ${days} 天`}`;
+  const periodLabel = "本周期剩余";
+  const progressLabel = `${item.name}：${periodLabel} ${progress}%，${item.startDate} 至 ${item.endDate}，${days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今日到期" : `距到期 ${days} 天`}`;
 
   return <article className={`subscription-card ${status}`} aria-label={item.name}>
     <div className="card-heading">
@@ -32,7 +33,7 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
       {statusLabel ? <span className={`card-status ${days <= 0 ? "expired" : "soon"}`}>{statusLabel}</span> : <span>{periodLabel}</span>}
       <span>{progress}%</span>
     </div>
-    <Progress value={progress} aria-label={progressLabel} aria-valuetext={progressLabel} title={progressLabel} className={`segments${progress === 0 ? " is-empty" : ""}`} style={{ "--segment-color": progressColor(progress) } as CSSProperties} />
+    <Progress value={progressValue} aria-label={progressLabel} aria-valuetext={progressLabel} title={progressLabel} className={`segments${progress === 0 ? " is-empty" : ""}`} style={{ "--segment-color": progressColor(progress) } as CSSProperties} />
     <div className="membership-expiry"><span><CalendarDays size={13} />到期日期</span><time dateTime={item.endDate}>{item.endDate.replaceAll("-", ".")}</time></div>
   </article>;
 }

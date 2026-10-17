@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { categories } from "../../shared/subscriptions.ts";
 import { currencyCodes } from "../../shared/currency.ts";
-import { paymentState, type Payment, type PaymentPreview } from "../../shared/payments.ts";
+import { paymentState, type Payment, type PaymentInput, type PaymentPreview } from "../../shared/payments.ts";
 import { dateSchema, idSchema } from "./validation.ts";
 import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
@@ -20,6 +20,11 @@ export const paymentSchema = z.object({ ...fields, rate: z.number().finite().pos
 }).strict().refine(p => p.endDate > p.startDate && p.rateDate <= p.startDate && (p.currency !== "CNY" || p.rate === 1), "支付账期或汇率不正确。")
   .refine(p => !p.voidedAt || p.voidedAt >= p.confirmedAt, "作废时间不正确。");
 const batchSchema = z.object({ subscriptionId: idSchema, entries: z.array(paymentInputSchema).min(1).max(36) }).strict();
+function paymentRateDate(entry: Pick<PaymentInput, "paidOn" | "startDate">): string {
+  // A prepayment is settled on its charge date; a payment entered after the
+  // service period keeps the period-start quote for a valid historical rate.
+  return entry.paidOn < entry.startDate ? entry.paidOn : entry.startDate;
+}
 
 /** One ledger for schedule events and explicit payments. All writes are owner-scoped and atomic. */
 export class PaymentService {
@@ -51,7 +56,7 @@ export class PaymentService {
       this.checkDate(entry);
       const duplicate = this.duplicate(owner,input.subscriptionId,entry.startDate,entry.endDate) || entries.some(p => p.startDate < entry.endDate && p.endDate > entry.startDate);
       // Sequential requests respect the rate provider's bounded concurrency.
-      const fx = await this.rates.lookup({currency:entry.currency,date:entry.startDate});
+      const fx = await this.rates.lookup({currency:entry.currency,date:paymentRateDate(entry)});
       entries.push({...entry,rate:fx.rate,rateDate:fx.rateDate,duplicate});
     }
     return {entries};
@@ -80,7 +85,7 @@ export class PaymentService {
     if (before.periods > 1) throw new ApiError(409,"此条包含多个自动顺延账期，请使用补录历史逐期记录实际付款。");
     if (input.entry.startDate !== before.newStartDate || input.entry.endDate !== before.newEndDate) throw new ApiError(400,"确认付款不能改变原流水对应的账期。");
     this.checkDate(input.entry);
-    const fx = await this.rates.lookup({currency:input.entry.currency,date:input.entry.startDate});
+    const fx = await this.rates.lookup({currency:input.entry.currency,date:paymentRateDate(input.entry)});
     return transaction(this.db, () => {
       const current = renewalFromRow(history.get(owner,input.id));
       if (paymentState(current) !== "pending" || JSON.stringify(current) !== JSON.stringify(before)) throw new ApiError(409,"流水已变化，请刷新后重试。");

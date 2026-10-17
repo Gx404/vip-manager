@@ -19,12 +19,13 @@ test("the seven-day summary includes today and day seven, but no expired or more
   assert.equal(dueWithin({ ...record, endDate: "2026-10-30" }, "2026-09-30", 30), true);
 });
 
-test("period bar and label share a bounded percentage across month-end, leap years and invalid dates", () => {
-  assert.equal(periodPercentage(record, "2026-08-31"), 100);
+test("period bar uses the current billing cycle and preserves extra prepaid time", () => {
+  assert.equal(periodPercentage(record, "2026-08-31"), 103);
   assert.equal(periodPercentage(record, "2026-09-01"), 100);
   assert.equal(periodPercentage(record, "2026-09-16"), 50);
   assert.equal(periodPercentage(record, "2026-10-01"), 0);
   assert.equal(periodPercentage(record, "2026-10-02"), 0);
+  assert.equal(periodPercentage({ ...record, startDate: "2026-09-01", endDate: "2026-10-31" }, "2026-09-16"), 150);
   assert.equal(periodPercentage({ startDate: "2026-03-04", endDate: "2027-03-04" }, "2026-09-30"), 42);
   assert.equal(periodPercentage({ startDate: "2028-02-28", endDate: "2028-03-01" }, "2028-02-29"), 50);
   assert.equal(periodPercentage({ startDate: "2026-01-31", endDate: "2026-02-28" }, "2026-02-14"), 50);

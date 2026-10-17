@@ -38,7 +38,7 @@ export function PaymentForm({items,initialId,target,onDone,onCancel}:{items:Subs
   }
   return <section className="payment-form" aria-label={target?"确认支付":"补录历史"}>
     <div className="ledger-subheading"><h3>{target?`${correcting?"更正":"确认"} ${target.subscriptionName} 的付款${correcting?"日期":""}`:"补录历史"}</h3><button className="button light" disabled={busy} onClick={result?onDone:onCancel}>{result?"完成":"返回流水"}</button></div>
-    <p className="muted">{target?"付款日期决定支出归属月份，默认跟随账期开始日；提前续费请填写实际付款日。":"选择起始账期，生成后逐笔核对。历史补录不改变当前到期日期。"}</p>
+    <p className="muted">{target?"付款日期决定支出归属月份和外币汇率；提前续费请填写实际扣款日。":"选择起始账期，生成后逐笔核对。历史补录不改变当前到期日期。"}</p>
     {!target && !result && <div className="form-grid">
       <label className="form-field wide"><span>订阅</span><select aria-label="订阅" disabled={busy} value={id} onChange={e=>{const next=items.find(i=>i.id===e.target.value)!;setId(next.id);setAmount(String(next.amount));setCurrency(next.currency??"CNY");setStart(next.startDate);setEntries([]);setPreview(null);}}>{items.map(i=><option key={i.id} value={i.id}>{i.name}{i.plan?` · ${i.plan}`:""}</option>)}</select></label>
       <label className="form-field"><span>首期开始日期</span><input type="date" min="1900-01-01" max={dateKey()} value={start} onChange={e=>{setStart(e.target.value);setEntries([]);setPreview(null);}} /></label>
@@ -60,7 +60,7 @@ export function PaymentForm({items,initialId,target,onDone,onCancel}:{items:Subs
     </div>)}</fieldset>
     {error&&<p role="alert" className="sync-banner">{error}</p>}
     {result&&<p role="status" className="ledger-notice">{result}</p>}
-    {entries.length>0&&<div className="payment-submit"><small className="muted">汇率按各期开始日自动获取；只有确认已支付的记录计入支出。{target&&entries[0].currency!=="CNY"?"人民币金额为历史汇率折算。":""}</small><button className="button primary" disabled={busy||Boolean(preview?.every(p=>p.duplicate))} onClick={()=>void submit(Boolean(preview))}>{busy?"处理中…":correcting?"保存付款日期":target?"确认已支付":preview?"确认补录已支付记录":"预览金额与重复账期"}</button></div>}
+    {entries.length>0&&<div className="payment-submit"><small className="muted">外币按实际付款日自动获取汇率；只有确认已支付的记录计入支出。{target&&entries[0].currency!=="CNY"?"人民币金额为历史汇率折算。":""}</small><button className="button primary" disabled={busy||Boolean(preview?.every(p=>p.duplicate))} onClick={()=>void submit(Boolean(preview))}>{busy?"处理中…":correcting?"保存付款日期":target?"确认已支付":preview?"确认补录已支付记录":"预览金额与重复账期"}</button></div>}
   </section>;
 }
 

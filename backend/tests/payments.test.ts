@@ -43,7 +43,7 @@ test("confirmation enriches one original audit, is single-use and cannot be undo
   await assert.rejects(payments.confirm(2,{id:renewal.renewal!.id,entry:p}),{status:404});
   const before=service.list(1);
   await payments.confirm(1,{id:renewal.renewal!.id,entry:p});
-  assert.equal(payments.all(1).length,1);assert.equal(payments.all(1)[0].payment!.rateDate,p.startDate);
+  assert.equal(payments.all(1).length,1);assert.equal(payments.all(1)[0].payment!.rateDate,p.paidOn);
   assert.deepEqual(service.list(1),before);
   await assert.rejects(payments.confirm(1,{id:renewal.renewal!.id,entry:p}),{status:409});
   assert.throws(()=>service.execute(1,{action:"undoRenew",id:item.id,version:1,logId:renewal.renewal!.id}),{status:409});
@@ -97,8 +97,8 @@ test("two prepaid annual bills allocate only over each service year and remain o
   const changed=service.execute(1,{action:"update",id:item.id,version:item.version,item:annual}).item!;
   const renewed=service.execute(1,{action:"renew",id:item.id,version:changed.version});
   assert.equal(renewed.item!.coverageStartDate,"2024-03-11");
-  assert.equal(periodPercentage(renewed.item!,"2024-10-10"),71);
-  assert.equal(periodPercentage(renewed.item!,"2025-03-11"),50,"progress cannot reset when the next year begins");
+  assert.equal(periodPercentage(renewed.item!,"2024-10-10"),142,"prepaid remaining time can exceed one current yearly cycle");
+  assert.equal(periodPercentage(renewed.item!,"2025-03-11"),100,"a new yearly cycle starts at full progress");
   assert.equal(service.listPublic()[0].coverageStartDate,"2024-03-11");
   assert.equal(defaultPaymentDate(renewed.renewal!,"2024-10-10"),"","prepayment requires its actual payment date");
   await payments.confirm(1,{id:renewed.renewal!.id,entry:{...entry("2025-03-11","2026-03-11"),amount:199,currency:"CNY",paidOn:"2024-03-11"}});
