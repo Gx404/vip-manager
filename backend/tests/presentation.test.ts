@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { occupiedCategories, dueWithin, progressColor, periodPercentage, progressLayers } from "../../shared/presentation.ts";
+import { occupiedCategories, dueWithin, progressColor, periodPercentage, billingProgress } from "../../shared/presentation.ts";
 import { monthlyCost, type Subscription } from "../../shared/subscriptions.ts";
 import { brands, matchBrand } from "../../shared/brands.ts";
 
@@ -56,13 +56,96 @@ test("progress colors run from empty red to full teal, interpolate and clamp saf
   assert.equal(progressColor(monthly), progressColor(yearly), "equivalent fractions use the same color across billing cycles");
 });
 
-test("progress layers keep the current cycle full and show prepaid time in a second layer", () => {
-  assert.deepEqual(progressLayers(42), { primary: 42, overflow: 0 });
-  assert.deepEqual(progressLayers(100), { primary: 100, overflow: 0 });
-  assert.deepEqual(progressLayers(142), { primary: 100, overflow: 42 });
-  assert.deepEqual(progressLayers(250), { primary: 100, overflow: 100 });
-  assert.deepEqual(progressLayers(-1), { primary: 0, overflow: 0 });
-  assert.deepEqual(progressLayers(Number.NaN), { primary: 0, overflow: 0 });
+test("prepaid progress separates the active monthly/yearly period from the wholly unused next period", () => {
+  const monthly = { ...record, coverageStartDate: "2026-09-24", startDate: "2026-10-24", endDate: "2026-11-24" };
+  assert.deepEqual(billingProgress(monthly, "2026-10-17"), {
+    current: { startDate: "2026-09-24", endDate: "2026-10-24", used: 77, remaining: 23 },
+    next: { startDate: "2026-10-24", endDate: "2026-11-24", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress({ ...record, cycle: "yearly", coverageStartDate: "2026-03-11", startDate: "2027-03-11", endDate: "2028-03-11" }, "2026-10-17"), {
+    current: { startDate: "2026-03-11", endDate: "2027-03-11", used: 60, remaining: 40 },
+    next: { startDate: "2027-03-11", endDate: "2028-03-11", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress(monthly, "2026-10-24"), {
+    current: { startDate: "2026-10-24", endDate: "2026-11-24", used: 0, remaining: 100 }, next: null, futurePeriods: 0,
+  });
+});
+
+test("multiple prepaid periods do not shrink the current period and expose only the nearest future row", () => {
+  const multi = { ...record, coverageStartDate: "2026-09-24", startDate: "2027-01-24", endDate: "2027-02-24" };
+  assert.deepEqual(billingProgress(multi, "2026-10-17"), {
+    current: { startDate: "2026-09-24", endDate: "2026-10-24", used: 77, remaining: 23 },
+    next: { startDate: "2026-10-24", endDate: "2026-11-24", remaining: 100 }, futurePeriods: 4,
+  });
+  const withoutExtra = billingProgress({ ...multi, startDate: "2026-10-24", endDate: "2026-11-24" }, "2026-10-17");
+  assert.deepEqual(billingProgress(multi, "2026-10-17").current, withoutExtra.current);
+});
+
+test("progress restores month-end and leap-year boundaries from the original coverage anchor", () => {
+  const monthly = { ...record, coverageStartDate: "2026-01-31", startDate: "2026-03-31", endDate: "2026-04-30" };
+  assert.deepEqual(billingProgress(monthly, "2026-02-28"), {
+    current: { startDate: "2026-02-28", endDate: "2026-03-31", used: 0, remaining: 100 },
+    next: { startDate: "2026-03-31", endDate: "2026-04-30", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress(monthly, "2026-03-01").current, {
+    startDate: "2026-02-28", endDate: "2026-03-31", used: 3, remaining: 97,
+  });
+  assert.deepEqual(billingProgress({ ...record, cycle: "yearly", coverageStartDate: "2024-02-29", startDate: "2027-02-28", endDate: "2028-02-29" }, "2027-02-28"), {
+    current: { startDate: "2027-02-28", endDate: "2028-02-29", used: 0, remaining: 100 }, next: null, futurePeriods: 0,
+  });
+});
+
+test("the explicit latest interval stays indivisible across restored month-end and leap-day billing dates", () => {
+  const monthly = { ...record, startDate: "2026-02-28", endDate: "2026-03-31" };
+  assert.deepEqual(billingProgress(monthly, "2026-03-15"), {
+    current: { startDate: "2026-02-28", endDate: "2026-03-31", used: 48, remaining: 52 },
+    next: null, futurePeriods: 0,
+  });
+  assert.deepEqual(billingProgress(monthly, "2026-03-28"), {
+    current: { startDate: "2026-02-28", endDate: "2026-03-31", used: 90, remaining: 10 },
+    next: null, futurePeriods: 0,
+  });
+  assert.deepEqual(billingProgress(monthly, "2026-02-27"), {
+    current: null, next: { startDate: "2026-02-28", endDate: "2026-03-31", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress({ ...record, cycle: "yearly", startDate: "2027-02-28", endDate: "2028-02-29" }, "2028-02-28"), {
+    current: { startDate: "2027-02-28", endDate: "2028-02-29", used: 100, remaining: 0 },
+    next: null, futurePeriods: 0,
+  });
+});
+
+test("a future subscription has no fictional current period and expired or invalid schedules are empty", () => {
+  assert.deepEqual(billingProgress(record, "2026-08-31"), {
+    current: null, next: { startDate: "2026-09-01", endDate: "2026-10-01", remaining: 100 }, futurePeriods: 1,
+  });
+  const empty = { current: null, next: null, futurePeriods: 0 };
+  for (const today of ["2026-10-01", "2026-10-02", "bad", "2026-02-30"]) assert.deepEqual(billingProgress(record, today), empty);
+  for (const changes of [{ startDate: "bad" }, { endDate: "bad" }, { endDate: record.startDate }, { endDate: "2026-08-31" }, { cycle: "custom" as const, customDays: 0 }]) {
+    assert.deepEqual(billingProgress({ ...record, ...changes }, "2026-09-15"), empty);
+  }
+  assert.deepEqual(billingProgress({ ...record, coverageStartDate: "bad" }, "2026-09-15"), billingProgress(record, "2026-09-15"));
+});
+
+test("custom and irregular final periods retain separate used and scheduled coverage", () => {
+  assert.deepEqual(billingProgress({ ...record, cycle: "custom", customDays: 10, coverageStartDate: "2026-10-01", startDate: "2026-10-21", endDate: "2026-10-31" }, "2026-10-17"), {
+    current: { startDate: "2026-10-11", endDate: "2026-10-21", used: 60, remaining: 40 },
+    next: { startDate: "2026-10-21", endDate: "2026-10-31", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress({ ...record, coverageStartDate: "2026-01-31", startDate: "2026-03-30", endDate: "2026-04-15" }, "2026-03-15"), {
+    current: { startDate: "2026-02-28", endDate: "2026-03-30", used: 50, remaining: 50 },
+    next: { startDate: "2026-03-30", endDate: "2026-04-15", remaining: 100 }, futurePeriods: 1,
+  });
+  assert.deepEqual(billingProgress({ ...record, coverageStartDate: "2026-01-31", startDate: "2026-03-30", endDate: "2026-04-15" }, "2026-03-30"), {
+    current: { startDate: "2026-03-30", endDate: "2026-04-15", used: 0, remaining: 100 },
+    next: null, futurePeriods: 0,
+  });
+  assert.deepEqual(billingProgress({ ...record, coverageStartDate: "2026-01-31", startDate: "2026-03-30", endDate: "2026-04-15" }, "2026-04-07"), {
+    current: { startDate: "2026-03-30", endDate: "2026-04-15", used: 50, remaining: 50 },
+    next: null, futurePeriods: 0,
+  });
+  assert.deepEqual(billingProgress({ ...record, startDate: "2026-09-01", endDate: "2026-09-11" }, "2026-09-06").current, {
+    startDate: "2026-09-01", endDate: "2026-09-11", used: 50, remaining: 50,
+  });
 });
 
 test("subscription names recognize Chinese/English/full-width aliases, while unknown services fall back", () => {
