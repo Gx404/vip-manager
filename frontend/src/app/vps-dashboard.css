@@ -155,7 +155,8 @@ body { font-size: 14px; }
 .subscription-card .segments.has-overflow {
   height: 13px !important;
   background: transparent !important;
-  mask-image: none;
+  /* Keep the same 24-cell rhythm on both rows as the normal bar. */
+  mask-image: repeating-linear-gradient(to right,#000 0, #000 calc(4.1667% - 2px),transparent calc(4.1667% - 2px),transparent 4.1667%);
   overflow: hidden;
 }
 .subscription-card .segments.has-overflow::before,
