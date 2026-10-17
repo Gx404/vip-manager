@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { CalendarDays, Clock3, Ellipsis, Wallet } from "lucide-react";
 import { ServiceLogo } from "@/components/service-logo";
 import { Progress } from "@/components/ui/progress";
-import { billingProgress, cycles, periodPercentage, progressColor, remaining, stateOf, type Subscription } from "@/lib/subscriptions";
+import { billingProgress, cycles, progressColor, remaining, stateOf, type Subscription } from "@/lib/subscriptions";
 import { CurrencyAmount } from "@/components/currency-amount";
 
 type Props = { item: Subscription; today: string; canManage: boolean; onEdit: () => void };
@@ -10,15 +10,14 @@ type Props = { item: Subscription; today: string; canManage: boolean; onEdit: ()
 export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
   const days = remaining(item, today);
   const status = stateOf(item, today);
-  const coverageStart = item.coverageStartDate ?? item.startDate;
-  const progress = periodPercentage(item, today < coverageStart ? coverageStart : today);
   const billing = billingProgress(item, today);
+  const period = billing.current ?? billing.next;
+  const progress = period?.remaining ?? 0;
   const metadata = [item.plan, item.category].filter(Boolean).join(" · ");
-  // Each row represents a real billing period, rather than a slice of the total percentage.
+  // Only the active period affects the bar; prepaid periods take over on their start date.
   const statusLabel = days < 0 ? "已到期" : days === 0 ? "今日到期" : status === "soon" ? "即将到期" : null;
-  const progressLabel = `${item.name}：总时长剩余 ${progress}%，${days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今日到期" : `距到期 ${days} 天`}`;
-  const currentLabel = billing.current ? `本期 ${billing.current.startDate} 至 ${billing.current.endDate}，已用 ${billing.current.used}%，剩余 ${billing.current.remaining}%` : "";
-  const nextLabel = billing.next ? `${billing.current ? "下期" : "账期"} ${billing.next.startDate} 至 ${billing.next.endDate}，尚未开始，剩余 ${billing.next.remaining}%` : "";
+  const periodLabel = billing.current ? "本期剩余" : billing.next ? "待开始" : statusLabel ?? "已结束";
+  const progressLabel = `${item.name}：${periodLabel} ${progress}%${period ? `，${period.startDate} 至 ${period.endDate}` : ""}`;
 
   return <article className={`subscription-card ${status}`} aria-label={item.name}>
     <div className="card-heading">
@@ -32,24 +31,10 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
       <div className="membership-metric"><div className="small-label"><Wallet size={13} />续费金额</div><div className="membership-price"><CurrencyAmount amount={item.amount} currency={item.currency} /><small> / {item.cycle === "custom" ? `${item.customDays}天` : cycles[item.cycle].replace("付", "")}</small></div></div>
     </div>
     <div className="progress-caption">
-      <span>总时长</span>
+      <span>{periodLabel}</span>
       <span title={progressLabel}>{progress}%</span>
     </div>
-    <div className="billing-progress">
-      {billing.current && <div className="billing-progress-period" title={currentLabel}>
-        <div className="billing-progress-label"><span>本期已用 {billing.current.used}%</span><span>剩余 {billing.current.remaining}%</span></div>
-        <Progress value={billing.current.remaining} fillFrom="end" aria-label={`${item.name}：${currentLabel}`} aria-valuetext={currentLabel} className="segments" style={{ "--segment-color": progressColor(billing.current.remaining) } as CSSProperties} />
-      </div>}
-      {billing.next && <div className="billing-progress-period next" title={nextLabel}>
-        <div className="billing-progress-label"><span>{billing.current ? "下期待开始" : "待开始"}</span><span>{billing.next.startDate.replaceAll("-", ".")}</span></div>
-        <Progress value={billing.next.remaining} aria-label={`${item.name}：${nextLabel}`} aria-valuetext={nextLabel} className="segments" style={{ "--segment-color": "#7186df" } as CSSProperties} />
-      </div>}
-      {!billing.current && !billing.next && <div className="billing-progress-period">
-        <div className="billing-progress-label"><span className="card-status expired">{statusLabel ?? "已结束"}</span><span>剩余 0%</span></div>
-        <Progress value={0} aria-label={progressLabel} aria-valuetext={progressLabel} className="segments is-empty" />
-      </div>}
-      {billing.futurePeriods > 1 && <div className="billing-progress-note">已续 {billing.futurePeriods} 个后续账期</div>}
-    </div>
+    <Progress value={progress} aria-label={progressLabel} aria-valuetext={progressLabel} title={progressLabel} className={`segments${progress === 0 ? " is-empty" : ""}`} style={{ "--segment-color": progressColor(progress) } as CSSProperties} />
     <div className="membership-expiry"><span><CalendarDays size={13} />到期日期</span><time dateTime={item.endDate}>{item.endDate.replaceAll("-", ".")}</time></div>
   </article>;
 }

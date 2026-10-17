@@ -151,12 +151,6 @@ body { font-size: 14px; }
 .subscription-card .segments { height: 7px !important; border-radius: 1px !important; background: var(--progress-track) !important; mask-image: repeating-linear-gradient(to right,#000 0, #000 calc(4.1667% - 2px),transparent calc(4.1667% - 2px),transparent 4.1667%); }
 .subscription-card .segments [data-slot="progress-indicator"] { border-radius: 1px; }
 .subscription-card .segments.is-empty { background: var(--danger-bg) !important; }
-.billing-progress { display: grid; gap: 7px; }
-.billing-progress-period { min-width: 0; }
-.billing-progress-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; color: var(--muted-foreground); font-size: 10px; line-height: 1.4; font-variant-numeric: tabular-nums; }
-.billing-progress-label .card-status { margin-left: 0; font-size: inherit; }
-.billing-progress-period.next .billing-progress-label { color: var(--text-secondary); }
-.billing-progress-note { color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
 .membership-expiry { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 13px; margin-top: 14px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; }
 .membership-expiry span { display: inline-flex; align-items: center; gap: 5px; }
 .membership-expiry time { font-variant-numeric: tabular-nums; }
