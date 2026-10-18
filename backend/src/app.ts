@@ -28,7 +28,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   const subscriptions = new SubscriptionService(db, config.timeZone, () => new Date(), exchangeRates);
   const history = new RenewalHistory(db);
   const backups = new BackupService(db);
-  const payments = new PaymentService(db,exchangeRates);
+  const payments = new PaymentService(db,exchangeRates,{timeZone:config.timeZone});
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxy ? config.trustedProxyRanges : false);
@@ -125,7 +125,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   app.post("/api/payments/backfill", async (req,res) => res.json(await payments.add(res.locals.user.id,req.body)));
   app.post("/api/payments/confirm", async (req,res) => res.json(await payments.confirm(res.locals.user.id,req.body)));
   app.post("/api/payments/void", (req,res) => res.json(payments.void(res.locals.user.id,req.body)));
-  app.post("/api/payments/date", (req,res) => res.json(payments.correctDate(res.locals.user.id,req.body)));
+  app.post("/api/payments/date", async (req,res) => res.json(await payments.correctDate(res.locals.user.id,req.body)));
   app.get("/api/subscriptions/history", (req,res) => {
     const query = z.object({ subscriptionId:idSchema.optional(), offset:z.coerce.number().int().min(0).max(1_000_000).default(0), limit:z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(req.query);
     res.json(history.list(res.locals.user.id,query.subscriptionId,query.offset,query.limit));
@@ -155,8 +155,12 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
       }
     }
     const result = subscriptions.execute(res.locals.user.id,req.body);
-    if (req.body.action === "renew") void subscriptions.refreshPendingRates();
     res.status(req.body.action === "create" ? 201 : 200).json(result);
+    if (req.body.action === "renew") {
+      void Promise.all([subscriptions.refreshPendingRates(),payments.refreshPendingRates()]).catch(error => {
+        console.error("续费汇率暂未补齐，下次将重试：",error instanceof Error ? error.name : "UnknownError");
+      });
+    }
   });
   app.use((_req,_res,next) => next(new ApiError(404,"接口不存在。","NOT_FOUND")));
   const handleError: ErrorRequestHandler = (error,_req,res,_next) => {

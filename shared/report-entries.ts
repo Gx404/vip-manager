@@ -1,11 +1,12 @@
 import type { RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
 import { dateNumber, type Subscription } from "./subscriptions.ts";
+import type { CurrencyCode } from "./currency.ts";
 
 type Interval = { startDate: string; endDate: string };
 export type ReportEntry = Interval & {
   id: string; subscriptionId: string; label: string; plan: string; category: string;
-  paidOn: string; amount: number; source: "payment" | "subscription";
+  paidOn: string; amount: number | null; originalAmount: number; currency: CurrencyCode; source: "payment" | "subscription";
   // A subscription estimate can fill only the uncovered portions of a ledger period.
   segments: Interval[];
 };
@@ -25,7 +26,7 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
   const confirmed: ReportEntry[] = logs.filter(log => paymentState(log) === "paid" && log.payment!.paidOn <= today).map(log => {
     const p = log.payment!;
     return { id: log.id, subscriptionId: log.subscriptionId, label: log.subscriptionName, plan: p.plan, category: p.category,
-      startDate: p.startDate, endDate: p.endDate, paidOn: p.paidOn, amount: paymentCny(p), source: "payment", segments: [p] };
+      startDate: p.startDate, endDate: p.endDate, paidOn: p.paidOn, amount: paymentCny(p), originalAmount:p.amount, currency:p.currency, source: "payment", segments: [p] };
   });
   const candidates: ReportEntry[] = [];
   const unavailable = new Set<string>();
@@ -33,7 +34,7 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
     if (item.startDate > today) continue;
     if (item.ratePending) { unavailable.add(item.id); continue; }
     candidates.push({ id: `subscription:${item.id}`, subscriptionId: item.id, label: item.name, plan: item.plan, category: item.category,
-      startDate: item.startDate, endDate: item.endDate, paidOn: item.startDate, amount: item.amount * (item.fxRateToCny ?? 1), source: "subscription", segments: [item] });
+      startDate: item.startDate, endDate: item.endDate, paidOn: item.startDate, amount: item.amount * (item.fxRateToCny ?? 1), originalAmount:item.amount,currency:item.currency ?? "CNY", source: "subscription", segments: [item] });
   }
   // Renewal audits also preserve the previous entered period and its price. Keep that
   // known history after renewal, without extrapolating missing cycles backwards.
@@ -43,7 +44,7 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
     candidates.push({ id: `schedule:${log.id}`, subscriptionId: log.subscriptionId, label: log.subscriptionName,
       plan: log.payment?.plan ?? item?.plan ?? "", category: log.payment?.category ?? item?.category ?? "其他服务",
       startDate: log.previousStartDate, endDate: log.previousEndDate, paidOn: log.previousStartDate,
-      amount: log.amount / log.periods * (log.fxRateToCny ?? 1), source: "subscription", segments: [{ startDate: log.previousStartDate, endDate: log.previousEndDate }] });
+      amount: log.amount / log.periods * (log.fxRateToCny ?? 1), originalAmount:log.amount / log.periods,currency:log.currency ?? "CNY",source: "subscription", segments: [{ startDate: log.previousStartDate, endDate: log.previousEndDate }] });
   }
 
   const accrual = [...confirmed], cash = [...confirmed];
@@ -57,7 +58,7 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
     if (!log.undoneAt || log.payment) cashBlocked.set(log.subscriptionId, [...(cashBlocked.get(log.subscriptionId) ?? []), interval]);
   }
   for (const entry of candidates) {
-    if (!Number.isFinite(entry.amount) || entry.amount < 0 || entry.endDate <= entry.startDate) continue;
+    if (entry.amount === null || !Number.isFinite(entry.amount) || entry.amount < 0 || entry.endDate <= entry.startDate) continue;
     const blockers = occupied.get(entry.subscriptionId) ?? [];
     let segments: Interval[] = [entry];
     for (const interval of blockers) segments = subtract(segments, interval);
@@ -91,13 +92,14 @@ export function entryDays(entry: ReportEntry, period: string): number {
  * covered part of its service interval. The remaining amount stays attached
  * to the entry's payment month; it is never spread into later months.
  */
-export function entryAmount(entry: ReportEntry): number {
+export function entryAmount(entry: ReportEntry): number | null {
+  if (entry.amount === null) return null;
   const duration = dateNumber(entry.endDate) - dateNumber(entry.startDate);
   const covered = entry.segments.reduce((days, segment) =>
     days + Math.max(0, dateNumber(segment.endDate) - dateNumber(segment.startDate)), 0);
   return duration > 0 ? entry.amount * Math.min(1, covered / duration) : 0;
 }
 
-export function allocatedEntry(entry: ReportEntry, period: string): number {
+export function allocatedEntry(entry: ReportEntry, period: string): number | null {
   return (!period || entry.paidOn.startsWith(period)) ? entryAmount(entry) : 0;
 }

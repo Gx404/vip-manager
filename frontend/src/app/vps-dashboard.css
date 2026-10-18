@@ -459,7 +459,20 @@ body { font-size: 14px; }
 }
 .spending-page .report-context .text-action:hover { background: var(--secondary); color: var(--foreground); }
 .spending-page .report-context .text-action:active { transform: translateY(1px); }
+.spending-page .spending-kpis > div > small,
+.spending-page .report-fx-pending {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+  font-weight: 400;
+}
 @media (max-width: 560px) {
   .spending-page .report-context { margin: -4px 0 12px; }
   .spending-page .report-context .text-action { align-self: flex-start; }
+  .spending-page .spending-kpis > div { flex-wrap: wrap; gap: 7px 10px; }
+  .spending-page .spending-kpis > div > span { white-space: nowrap; }
+  .spending-page .spending-kpis > div > small { flex: 0 0 100%; margin-top: 0; }
+  .ledger-row-bottom { flex-direction: column; align-items: flex-start; }
+  .ledger-row-bottom > div { width: 100%; justify-content: flex-end; }
 }

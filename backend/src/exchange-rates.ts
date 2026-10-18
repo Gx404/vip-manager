@@ -2,6 +2,7 @@ import { z } from "zod";
 import { currencyCodes, type HistoricalRate } from "../../shared/currency.ts";
 import { dateSchema } from "./validation.ts";
 import { ApiError } from "./errors.ts";
+import { dateInTimeZone } from "../../shared/billing.ts";
 
 export const rateQuerySchema = z.object({ currency: z.enum(currencyCodes), date: dateSchema }).strict();
 const responseSchema = z.object({ date: dateSchema, base: z.string(), quote: z.string(), rate: z.number().finite().positive().max(100_000) });
@@ -16,7 +17,7 @@ export class ExchangeRates {
   async lookup(input: unknown): Promise<HistoricalRate> {
     const { currency, date } = rateQuerySchema.parse(input);
     if (currency === "CNY") return { currency, requestedDate: date, rateDate: date, rate: 1, source: "manual" };
-    if (date > new Date().toISOString().slice(0, 10)) throw new ApiError(400, "本期尚未开始，开始当天再自动获取汇率。");
+    if (date > dateInTimeZone(new Date(), process.env.APP_TIMEZONE ?? "Asia/Shanghai")) throw new ApiError(400, "查询日期不能晚于今天。");
     const key = currency + ":" + date;
     const cached = this.cache.get(key);
     if (cached && cached.expires > Date.now()) return cached.value;

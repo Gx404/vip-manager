@@ -56,11 +56,11 @@ export function PaymentForm({items,initialId,target,onDone,onCancel}:{items:Subs
         <label className="form-field"><span>费用</span><input disabled={correcting} type="number" min={0} step="0.01" value={entry.amount} onChange={e=>change(n,{amount:Number(e.target.value)})}/></label>
         <label className="form-field wide"><span>备注</span><input disabled={correcting} maxLength={500} value={entry.note} onChange={e=>change(n,{note:e.target.value})}/></label>
       </div>
-      {preview?.[n] && <p className={preview[n].duplicate?"amber":"muted"}>{preview[n].duplicate ? "已有相同或重叠账期，保存时将跳过。可返回流水确认已有记录。" : `${money(entry.amount,entry.currency)} · 折合约 ${money(entry.amount*preview[n].rate)}（${preview[n].rateDate} 汇率）`}</p>}
+      {preview?.[n] && <p className={preview[n].duplicate?"amber":"muted"}>{preview[n].duplicate ? "已有相同或重叠账期，保存时将跳过。可返回流水确认已有记录。" : preview[n].rate===null ? `${money(entry.amount,entry.currency)} · 汇率待补，可先保存付款，稍后自动重试。` : `${money(entry.amount,entry.currency)} · 折合约 ${money(entry.amount*preview[n].rate!)}（${preview[n].rateDate} 汇率）`}</p>}
     </div>)}</fieldset>
     {error&&<p role="alert" className="sync-banner">{error}</p>}
     {result&&<p role="status" className="ledger-notice">{result}</p>}
-    {entries.length>0&&<div className="payment-submit"><small className="muted">外币按实际付款日自动获取汇率；只有确认已支付的记录计入支出。{target&&entries[0].currency!=="CNY"?"人民币金额为历史汇率折算。":""}</small><button className="button primary" disabled={busy||Boolean(preview?.every(p=>p.duplicate))} onClick={()=>void submit(Boolean(preview))}>{busy?"处理中…":correcting?"保存付款日期":target?"确认已支付":preview?"确认补录已支付记录":"预览金额与重复账期"}</button></div>}
+    {entries.length>0&&<div className="payment-submit"><small className="muted">{correcting?"保存后按更正的付款日期重新获取汇率；":"外币按实际付款日自动获取汇率；"}查询失败不影响记录付款，人民币金额显示“汇率待补”，稍后自动补齐。</small><button className="button primary" disabled={busy||Boolean(preview?.every(p=>p.duplicate))} onClick={()=>void submit(Boolean(preview))}>{busy?"处理中…":correcting?"保存付款日期":target?"确认已支付":preview?"确认补录已支付记录":"预览金额与重复账期"}</button></div>}
   </section>;
 }
 

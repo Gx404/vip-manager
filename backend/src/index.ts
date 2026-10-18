@@ -5,6 +5,7 @@ import { createApp } from "./app.ts";
 import { SubscriptionService } from "./subscriptions.ts";
 import { startNotificationScheduler, startRenewalScheduler } from "./renewal-scheduler.ts";
 import { EmailNotificationService } from "./notifications.ts";
+import { PaymentService } from "./payments.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 let db: DatabaseSync | undefined;
@@ -19,7 +20,11 @@ try {
   await bootstrapAdmin(db,config);
   stopRenewals = startRenewalScheduler(new SubscriptionService(db,config.timeZone));
   const rateService = new SubscriptionService(db,config.timeZone);
-  stopRates = startNotificationScheduler({sendDueReminders:async () => { await rateService.refreshPendingRates(); return 0; }});
+  const payments = new PaymentService(db,undefined,{timeZone:config.timeZone});
+  stopRates = startNotificationScheduler({sendDueReminders:async () => {
+    await Promise.all([rateService.refreshPendingRates(),payments.refreshPendingRates()]);
+    return 0;
+  }});
   notifications = new EmailNotificationService(db, config);
   if (config.email.enabled) stopNotifications = startNotificationScheduler(notifications);
   const server = createApp(db,config,notifications).listen(config.port,config.host,() => {

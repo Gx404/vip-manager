@@ -8,6 +8,7 @@ import { transaction } from "./database.ts";
 import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import type { RenewalLog } from "../../shared/renewals.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
+import { PaymentService } from "./payments.ts";
 
 type Row = Record<string, unknown>;
 export function subscriptionFromRow(row: Row): Subscription {
@@ -36,9 +37,11 @@ export class SubscriptionService {
   private timeZone: string;
   private history: RenewalHistory;
   private clock: () => Date;
+  private payments: PaymentService;
   constructor(db: DatabaseSync, timeZone: string, clock: () => Date = () => new Date(), rates = new ExchangeRates()) {
     this.rates = rates;
     this.db=db; this.timeZone=timeZone; this.history=new RenewalHistory(db); this.clock=clock;
+    this.payments=new PaymentService(db,rates,{timeZone:this.timeZone,clock:this.clock});
   }
 
   list(owner: number) {
@@ -73,14 +76,15 @@ export class SubscriptionService {
     });
   }
 
-  /** Retry missing start-date rates without changing schedule, payments or optimistic versions. */
+  /** Retry the budget's purchase-date quote without changing schedule, payments or optimistic versions. */
   async refreshPendingRates(): Promise<void> {
-    const rows = this.db.prepare("SELECT * FROM subscriptions WHERE rate_pending=1 AND start_date<=? LIMIT 20").all(new Date().toISOString().slice(0,10));
+    const today = dateInTimeZone(this.clock(),this.timeZone);
+    const rows = this.db.prepare("SELECT * FROM subscriptions WHERE rate_pending=1 AND purchase_date<=? LIMIT 20").all(today);
     for (const row of rows) {
       try {
-        const fx = await this.rates.lookup({currency:row.currency,date:row.start_date});
-        this.db.prepare("UPDATE subscriptions SET purchase_date=start_date,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(original_amount_cents*?),rate_pending=0 WHERE user_id=? AND id=? AND version=? AND rate_pending=1 AND start_date=?")
-          .run(fx.rate,fx.rateDate,fx.source,fx.rate,Number(row.user_id),String(row.id),Number(row.version),String(row.start_date));
+        const fx = await this.rates.lookup({currency:row.currency,date:row.purchase_date});
+        this.db.prepare("UPDATE subscriptions SET fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(original_amount_cents*?),rate_pending=0 WHERE user_id=? AND id=? AND version=? AND rate_pending=1 AND start_date=? AND purchase_date=?")
+          .run(fx.rate,fx.rateDate,fx.source,fx.rate,Number(row.user_id),String(row.id),Number(row.version),String(row.start_date),String(row.purchase_date));
       } catch { /* Leave explicit pending status; retry on the next scheduler pass. */ }
     }
   }
@@ -190,8 +194,11 @@ export class SubscriptionService {
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
           .run(base,end,anchor,now.getTime(),owner,item.id,item.version);
         const updated = this.get(owner,item.id);
-        const renewal = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
-        this.db.prepare("UPDATE subscriptions SET rate_pending=CASE WHEN currency='CNY' THEN 0 ELSE 1 END,purchase_date=start_date WHERE user_id=? AND id=?").run(owner,item.id);
+        const recorded = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
+        // Clicking manual renewal asserts payment. Record it in this same transaction;
+        // an external FX request must never block or partially commit the renewal.
+        const renewal = this.payments.recordRenewalPayment(owner,recorded.id,today).log;
+        this.db.prepare("UPDATE subscriptions SET rate_pending=CASE WHEN currency='CNY' THEN 0 ELSE 1 END,purchase_date=? WHERE user_id=? AND id=?").run(today,owner,item.id);
         const log = this.history.get(owner,renewal.id);
         return { item: this.get(owner,item.id), renewal, undoUntil: new Date(Number(log.undo_until)).toISOString() };
       }

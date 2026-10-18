@@ -3,16 +3,16 @@ import type { RenewalLog } from "./renewals.ts";
 
 export type Payment = {
   amount: number; currency: CurrencyCode; paidOn: string; startDate: string; endDate: string;
-  rate: number; rateDate: string; category: string; plan: string; note: string;
+  rate: number | null; rateDate: string | null; category: string; plan: string; note: string;
   source: "backfill" | "renewal"; confirmedAt: string; voidedAt: string | null;
   dateCorrections?: { from: string; to: string; changedAt: string }[];
 };
 export type PaymentInput = Pick<Payment, "amount" | "currency" | "paidOn" | "startDate" | "endDate" | "note">;
-export type PaymentPreview = PaymentInput & { rate: number; rateDate: string; duplicate: boolean };
+export type PaymentPreview = PaymentInput & { rate: number | null; rateDate: string | null; duplicate: boolean };
 export function paymentState(log: RenewalLog): "paid" | "pending" | "void" {
   return log.undoneAt || log.payment?.voidedAt ? "void" : log.payment ? "paid" : "pending";
 }
-export function paymentCny(payment: Payment): number { return payment.amount * payment.rate; }
+export function paymentCny(payment: Payment): number | null { return payment.rate === null ? null : payment.amount * payment.rate; }
 /**
  * Pick a usable date for the explicit confirmation form.
  *

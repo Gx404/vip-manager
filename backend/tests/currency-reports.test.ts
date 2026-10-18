@@ -38,7 +38,7 @@ test("currency snapshots survive editing, new periods, undo and JSON v3", t => {
   const initial = service.execute(1, { action: "create", item: record(fx) }).item!;
   assert.equal(initial.amount, 20); assert.equal(initial.fxRateToCny, fx.fxRateToCny);
   const renewed = service.execute(1, { action: "renew", id: initial.id, version: 0 });
-  assert.equal(renewed.item!.purchaseDate, renewed.item!.startDate); assert.equal(renewed.item!.ratePending,true);
+  assert.equal(renewed.item!.purchaseDate, "2026-09-30"); assert.equal(renewed.item!.ratePending,true);
   assert.equal(renewed.renewal!.currency, "USD"); assert.equal(renewed.renewal!.amount, 20);
   service.execute(1, { action: "undoRenew", id: initial.id, version: 1, logId: renewed.renewal!.id });
   const current = service.list(1).items[0];

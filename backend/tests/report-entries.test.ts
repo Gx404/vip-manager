@@ -95,7 +95,7 @@ test("future starts and missing rates stay out, while free subscriptions remain 
   const report=paymentReport([],[future,pending,free,...many],"2026-10-10","2024-10","accrual");
   assert.equal(report.ranking.length,10);assert.equal(report.details.length,10);assert.equal(report.total,279);
   near(report.categories.reduce((sum,c)=>sum+c.amount,0),report.total);near(report.ranking.reduce((sum,c)=>sum+c.amount,0),report.total);
-  near(report.details.reduce((sum,c)=>sum+c.allocated,0),report.total);
+  near(report.details.reduce((sum,c)=>sum+(c.allocated ?? 0),0),report.total);
 });
 
 test("calendar filters drive the chart and details without changing the current month/year summaries",()=>{
@@ -109,7 +109,7 @@ test("calendar filters drive the chart and details without changing the current 
     assert.equal(report.months[0].key,`${period.slice(0,4)||"2026"}-01`);
     assert.equal(report.months[11].key,`${period.slice(0,4)||"2026"}-12`);
     near(report.categories.reduce((sum,c)=>sum+c.amount,0),report.total);
-    near(report.details.reduce((sum,c)=>sum+c.allocated,0),report.total);
+    near(report.details.reduce((sum,c)=>sum+(c.allocated ?? 0),0),report.total);
   }
   const annual=paymentReport([older],items,"2026-10-11","2024","accrual");
   assert.equal(annual.total,31);assert.equal(annual.months[4].amount,31);
