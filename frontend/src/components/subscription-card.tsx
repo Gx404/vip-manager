@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { CalendarDays, Clock3, Ellipsis, Wallet } from "lucide-react";
 import { ServiceLogo } from "@/components/service-logo";
 import { Progress } from "@/components/ui/progress";
-import { billingProgress, cycles, remaining, stateOf, type Subscription } from "@/lib/subscriptions";
+import { billingProgress, cycles, progressColor, remaining, stateOf, type Subscription } from "@/lib/subscriptions";
 import { CurrencyAmount } from "@/components/currency-amount";
 
 type Props = { item: Subscription; today: string; canManage: boolean; onEdit: () => void };
@@ -16,7 +16,7 @@ export function SubscriptionCard({ item, today, canManage, onEdit }: Props) {
   const displayDays = billing.current ? remaining({ ...item, endDate: billing.current.endDate }, today)
     : billing.next ? remaining({ ...item, endDate: billing.next.startDate }, today) : Math.abs(days);
   const timeLabel = billing.current ? "本期剩余" : billing.next ? "待开始" : days < 0 ? "已过期" : "今日到期";
-  const barColor = status === "expired" ? "#d35e62" : status === "soon" ? "#df984c" : "#2f9e7a";
+  const barColor = progressColor(progress);
   const metadata = [item.plan, item.category].filter(Boolean).join(" · ");
   // Only the active period affects the bar; prepaid periods take over on their start date.
   const statusLabel = days < 0 ? "已到期" : days === 0 ? "今日到期" : status === "soon" ? "即将到期" : null;

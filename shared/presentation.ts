@@ -14,8 +14,20 @@ export function dueWithin(item: Subscription, today: string, limit: number): boo
   return days >= 0 && days <= limit;
 }
 
+/**
+ * The active-period rail uses one color for all remaining cells.  The color
+ * follows the remaining percentage continuously so a small change in the
+ * billing period does not cause a jarring jump between unrelated status
+ * colors.  These anchors keep the useful visual landmarks at 100/80/60/40/20
+ * while leaving the values between them smooth.
+ */
 const progressStops = [
-  [0, "#d35e62"], [20, "#df984c"], [50, "#a3b75c"], [100, "#2f9e7a"],
+  [0, "#d35e62"],
+  [20, "#dc7954"],
+  [40, "#e0a04c"],
+  [60, "#b5bb58"],
+  [80, "#79b88a"],
+  [100, "#2f9e7a"],
 ] as const;
 
 /** One solid bar color follows the same remaining percentage as its length, for every billing cycle. */

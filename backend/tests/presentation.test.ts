@@ -43,12 +43,15 @@ test("monthly budget amortizes each billing cycle independently of auto-renewal"
   assert.equal(monthlyCost({ ...record, amount: 0 }), 0);
 });
 
-test("progress colors run from empty red to full teal, interpolate and clamp safely", () => {
+test("progress colors smoothly follow the active period with 100/80/60/40/20 anchors", () => {
   assert.equal(progressColor(0), "#d35e62");
-  assert.equal(progressColor(10), "#d97b57");
-  assert.equal(progressColor(20), "#df984c");
-  assert.equal(progressColor(50), "#a3b75c");
+  assert.equal(progressColor(20), "#dc7954");
+  assert.equal(progressColor(40), "#e0a04c");
+  assert.equal(progressColor(60), "#b5bb58");
+  assert.equal(progressColor(80), "#79b88a");
   assert.equal(progressColor(100), "#2f9e7a");
+  assert.notEqual(progressColor(70), progressColor(60), "values between anchors still interpolate");
+  assert.notEqual(progressColor(70), progressColor(80), "values between anchors still interpolate");
   for (const value of [-1, NaN, Infinity]) assert.equal(progressColor(value), progressColor(0));
   assert.equal(progressColor(150), progressColor(100));
   const monthly = periodPercentage(record, "2026-09-16");
