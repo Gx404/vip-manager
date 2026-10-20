@@ -15,6 +15,10 @@
 | POST | /api/notifications/test | 空 JSON `{}`；只向配置地址发送，返回 `accepted:true` 表示 SMTP 接受；限流每分钟一次（429 + Retry-After），未配置 503，失败或结果不明 502 |
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
+| GET | /api/payments | 当前用户的续费与付款记录，返回 logs |
+| POST | /api/payments/confirm | { id, entry }；为已有单期自动顺延记录保存实付金额、币种、付款日期和固定有效期 |
+| POST | /api/payments/update | { id, entry, expected }；修改一笔已支付记录；entry / expected 为 amount、currency、paidOn、note，保留修改前信息，冲突返回 409 |
+| POST | /api/payments/void | { id }；作废付款，保留原记录并从支出中排除 |
 | GET | /api/subscriptions/history | 私人流水；可选 subscriptionId、offset（默认 0）、limit（默认 50，最大 100）；返回 logs、total |
 | POST | /api/subscriptions/history/delete | JSON：{ id }；仅删除当前用户已撤销（undoneAt 非空）的流水，返回 { id }；未撤销返回 409 / RENEWAL_NOT_UNDONE，不存在或不属于当前用户返回 404 |
 | GET | /api/exchange-rate | 需登录；currency 与 date 查询购买日到人民币历史汇率，不写入订阅 |
@@ -29,7 +33,7 @@
 - initialize：将当前用户清单设为已初始化，不删除任何记录。
 - create：item 为完整会员记录；id 可留空由服务端生成 UUID。
 - update：id、version、完整 item。item.id 必须匹配 id。
-- renew：id、version、可选 requestId（UUID，用于重试幂等）。返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。
+- renew：id、version、可选 requestId（UUID，用于重试幂等）、payment（amount、currency、paidOn、note）。付款日期不得晚于应用时区今天；返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。省略 payment 的兼容请求使用旧价格和今天作为付款日期。
 - undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；返回恢复后的 item，流水标记 undoneAt 而不是删除。
 - delete：id、version。
 
@@ -39,7 +43,9 @@
 
 兼容旧 v4 请求/备份的 billingAmount、billingCurrency、exchangeRate、exchangeRateDate：以 billingAmount 恢复原币数值，不再次换算旧 amount。混用两套币种字段会拒绝。数据库 original_amount_cents 保存原币整数分，amount_cents 保留旧人民币折算整数分；业务读取使用原币与快照。旧版客户端应随服务端一同更新，不应将新版 amount 当作人民币。
 
-购买日期/汇率与本期账期分离，renew、undoRenew 与自动续期均不改写这些字段。记录续期时把当时的快照复制到流水，以后修改订阅不会改写旧流水。
+购买日期/汇率与本期账期分离。手动 renew 将本次实付金额、币种和付款日期保存为最新续费默认值，外币汇率异步补齐；undoRenew 恢复原来的价格、币种、日期和汇率。流水的旧价格快照用于保留前一期信息，payment 保存本次实际付款，二者不能混用。自动顺延只维护日期并按新账期开始日刷新预算汇率，不伪造已付款。
+
+修改已支付记录时，只有币种或付款日期变化才重新查询汇率；更正记录保存在 payment.corrections。有效期固定。若修改的是最新一笔续费，且卡片价格未单独修改，则同步最新默认价格；修改更早的记录不覆盖后来的价格。旧版日期更正与历史导入接口保留兼容，页面已移除补录入口。
 
 category：影音娱乐、购物电商、AI 工具、云存储、办公效率、设计与创作、云服务与网络、游戏会员、学习教育、生活服务、其他服务。cycle：monthly、quarterly、yearly、custom。
 

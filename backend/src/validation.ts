@@ -9,6 +9,12 @@ export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value =
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value;
 }, "请选择有效日期（1900–2200 年）。");
 export const idSchema = z.string().uuid("记录标识不正确。");
+export const paymentAmountSchema = z.number().finite().min(0).max(10_000_000)
+  .refine(n => Math.abs(n * 100 - Math.round(n * 100)) < 0.00001, "金额最多两位小数。");
+export const renewalPaymentSchema = z.object({
+  amount: paymentAmountSchema, currency: z.enum(currencyCodes), paidOn: dateSchema,
+  note: z.string().trim().max(500).default(""),
+}).strict();
 export const currencyFields = {
   currency: z.enum(currencyCodes).default("CNY"),
   purchaseDate: dateSchema.optional(),
@@ -70,4 +76,5 @@ export const actionSchema = z.object({
   item: z.unknown().optional(),
   requestId: idSchema.optional(),
   logId: idSchema.optional(),
+  payment: renewalPaymentSchema.optional(),
 }).strict();

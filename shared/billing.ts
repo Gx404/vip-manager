@@ -15,6 +15,14 @@ export function billingAnchor(item: Period): string {
   return renewDate(item.startDate, item.cycle, item.customDays) === item.endDate ? item.startDate : item.endDate;
 }
 
+/** Buy one more period from the saved expiry, or from today after a lapse. */
+export function nextRenewalPeriod(item: Period, today: string, savedAnchor = billingAnchor(item)) {
+  const startDate = item.endDate > today ? item.endDate : today;
+  const anchor = item.endDate >= today ? savedAnchor : startDate;
+  const endDate = item.endDate >= today ? automaticPeriod(item, anchor, startDate)!.endDate : renewDate(startDate, item.cycle, item.customDays);
+  return { startDate, endDate, anchor };
+}
+
 /** Return an anchored boundary without cumulative February/month-end drift. */
 export function cycleBoundary(anchor: string, cycle: Subscription["cycle"], days: number, index: number): string {
   if (!Number.isInteger(index) || index < 0) throw new Error("账期序号必须是非负整数。");

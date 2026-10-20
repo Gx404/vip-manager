@@ -476,3 +476,43 @@ body { font-size: 14px; }
   .ledger-row-bottom { flex-direction: column; align-items: flex-start; }
   .ledger-row-bottom > div { width: 100%; justify-content: flex-end; }
 }
+
+/* Payment editing follows the dashboard's existing neutral surfaces. */
+.renewal-dialog { max-width: 500px !important; }
+.simple-history-dialog { max-width: 720px !important; }
+.simple-renewal-form { display: grid; gap: 18px; }
+.renewal-period { display: grid; gap: 8px; padding: 14px 16px; border-radius: 10px; background: var(--surface-sunken); border: 1px solid var(--border); }
+.renewal-period > span { color: var(--muted-foreground); font-size: .8125rem; }
+.renewal-period strong { color: var(--foreground); font-size: .9375rem; font-weight: 550; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.renewal-period strong span { color: var(--muted-foreground); padding: 0 3px; }
+.renewal-payment-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.renewal-payment-fields .form-grid { padding: 0; }
+.renewal-note { margin-top: 16px; color: var(--muted-foreground); font-size: .8125rem; }
+.renewal-note summary { width: fit-content; cursor: pointer; }
+.renewal-note .form-field { margin-top: 10px; }
+.renewal-hint { margin: 0; font-size: .8125rem; line-height: 1.7; color: var(--muted-foreground); }
+.renewal-form-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
+.renewal-history-toolbar { display: flex; gap: 12px; align-items: center; }
+.renewal-history-toolbar .form-field { flex: 1; }
+.renewal-history-toolbar .button { flex-shrink: 0; }
+.renewal-history-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 18px 0; font-size: .8125rem; color: var(--text-secondary); }
+.renewal-history-summary strong { margin-left: auto; color: var(--foreground); font-size: 1.1875rem; font-variant-numeric: tabular-nums; }
+.renewal-history-summary small { flex: 0 0 100%; text-align: right; color: var(--muted-foreground); font-size: .75rem; }
+.simple-history-dialog .ledger-list { margin-top: 16px; }
+.simple-history-dialog .ledger-row { padding: 18px; }
+.simple-history-dialog .ledger-row-main { align-items: flex-start; }
+.simple-history-dialog .ledger-row-main > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.simple-history-dialog .ledger-row-main strong { font-size: .9375rem; }
+.renewal-plan { font-weight: 400; color: var(--muted-foreground); }
+.renewal-service-period { display: flex; flex-wrap: wrap; gap: 6px 10px; font-variant-numeric: tabular-nums; }
+.renewal-service-period b { font-size: .75rem; font-weight: 500; color: var(--text-secondary); }
+.simple-history-dialog .ledger-detail { margin-top: 14px; padding-top: 10px; }
+.simple-history-dialog .ledger-secondary-actions { display: flex; gap: 16px; margin-top: 10px; }
+.payment-form-title { margin: 0 0 16px; font-size: .9375rem; color: var(--foreground); }
+@media (max-width: 560px) {
+  .simple-history-dialog .ledger-row { padding: 14px; }
+  .renewal-history-toolbar { gap: 8px; }
+  .renewal-history-toolbar .button { padding: 10px 12px; }
+  .renewal-period { padding: 12px; }
+  .renewal-period strong { font-size: .875rem; }
+}

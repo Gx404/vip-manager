@@ -6,8 +6,10 @@ export type Payment = {
   rate: number | null; rateDate: string | null; category: string; plan: string; note: string;
   source: "backfill" | "renewal"; confirmedAt: string; voidedAt: string | null;
   dateCorrections?: { from: string; to: string; changedAt: string }[];
+  corrections?: { previous: RenewalPaymentInput; changedAt: string }[];
 };
 export type PaymentInput = Pick<Payment, "amount" | "currency" | "paidOn" | "startDate" | "endDate" | "note">;
+export type RenewalPaymentInput = Pick<PaymentInput, "amount" | "currency" | "paidOn" | "note">;
 export type PaymentPreview = PaymentInput & { rate: number | null; rateDate: string | null; duplicate: boolean };
 export function paymentState(log: RenewalLog): "paid" | "pending" | "void" {
   return log.undoneAt || log.payment?.voidedAt ? "void" : log.payment ? "paid" : "pending";

@@ -16,8 +16,10 @@ import { toast } from "sonner";
 import { categories, cycles, dateKey, monthlyCostCny, remaining, renewDate, occupiedCategories, shiftDate, stateOf, type Subscription, type DashboardSnapshot } from "@/lib/subscriptions";
 import { formatCurrency, money } from "../../../shared/currency.ts";
 import type { RenewalResult } from "../../../shared/renewals.ts";
+import type { RenewalPaymentInput } from "../../../shared/payments.ts";
 import { linkedEndDate, updateDraftPeriod, membershipTemplates, requestId, type MembershipTemplate } from "@/lib/dashboard-helpers";
 import { HistoryDialog } from "@/components/history-dialog";
+import { RenewalDialog } from "@/components/renewal-dialog";
 import { BackupDialog } from "@/components/backup-dialog";
 import { SubscriptionRow } from "@/components/subscription-row";
 import { SubscriptionCard } from "@/components/subscription-card";
@@ -102,6 +104,7 @@ export default function Dashboard() {
   });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItem, setHistoryItem] = useState<Subscription | null>(null);
+  const [renewalItem, setRenewalItem] = useState<Subscription | null>(null);
   const [backupOpen, setBackupOpen] = useState(false);
   const [dateLinked, setDateLinked] = useState(true);
   const [periodPrompt, setPeriodPrompt] = useState<string | null>(null);
@@ -118,7 +121,7 @@ export default function Dashboard() {
     toast.dismiss();
     setReportOpen(false); setShowReminders(false); setShowCostBreakdown(false);
     setEditorOpen(false); setHistoryOpen(false); setBackupOpen(false); setConfirmAction(null);
-    setSelected(null); setHistoryItem(null); setDraft(blankDraft(dateKey())); setUndoReceipts({});
+    setSelected(null); setHistoryItem(null); setRenewalItem(null); setDraft(blankDraft(dateKey())); setUndoReceipts({});
   }, [authRequired]);
 
   useEffect(() => {
@@ -171,7 +174,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Do not overwrite an open editor or create avoidable optimistic-lock conflicts while typing.
     const refresh = () => {
-      if (document.visibilityState === "visible" && !editorOpen && !loginOpen && !saving && !confirmAction) {
+      if (document.visibilityState === "visible" && !editorOpen && !renewalItem && !loginOpen && !saving && !confirmAction) {
         setToday(dateKey());
         void loadRecords(true);
       }
@@ -179,7 +182,7 @@ export default function Dashboard() {
     const timer = window.setInterval(refresh, 60_000);
     document.addEventListener("visibilitychange", refresh);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
-  }, [editorOpen, loginOpen, saving, confirmAction, loadRecords]);
+  }, [editorOpen, renewalItem, loginOpen, saving, confirmAction, loadRecords]);
 
   useEffect(() => {
     type Tool = { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown };
@@ -255,13 +258,13 @@ export default function Dashboard() {
   }
 
   /** Record a renewal from details only and keep a short server-validated undo window. */
-  async function quickRenew(item: Subscription) {
-    if (authRequired || item.autoRenew || pendingRenewals.current.has(item.id) || undoReceipts[item.id]) return;
+  async function quickRenew(item: Subscription, payment: RenewalPaymentInput) {
+    if (authRequired || item.autoRenew || pendingRenewals.current.has(item.id) || undoReceipts[item.id]) throw new Error("暂时无法续费，请刷新后再试。");
     const epoch = mutationEpoch.current;
     pendingRenewals.current.add(item.id);
     setQuickRenewing(current => new Set(current).add(item.id));
     try {
-      const result = await postAction<RenewalResult>("renew", { id: item.id, version: item.version, requestId: requestId() });
+      const result = await postAction<RenewalResult>("renew", { id: item.id, version: item.version, requestId: requestId(), payment });
       if (epoch !== mutationEpoch.current) return;
       const until = result.undoUntil ? new Date(result.undoUntil).getTime() : 0;
       if (until) {
@@ -269,7 +272,7 @@ export default function Dashboard() {
         quickRenewTimers.current[item.id] = window.setTimeout(() => setUndoReceipts(current => { const next = { ...current }; delete next[item.id]; return next; }), Math.max(100, until - Date.now() + 250));
       }
       setItems(current => current.map(value => value.id === item.id ? result.item : value));
-      setShowReminders(false); setEditorOpen(false);
+      setShowReminders(false); setEditorOpen(false); setRenewalItem(null);
       const undo = async () => {
         if (epoch !== mutationEpoch.current || pendingRenewals.current.has(item.id)) return;
         pendingRenewals.current.add(item.id);
@@ -281,12 +284,12 @@ export default function Dashboard() {
         } catch (reason) { if (epoch === mutationEpoch.current) { toast.error(reason instanceof Error ? reason.message : "撤销失败，请刷新确认。"); void loadRecords(true); } }
         finally { pendingRenewals.current.delete(item.id); }
       };
-      toast.success("已续费并记录付款", { description: `${result.item.endDate} 到期${result.renewal.payment?.rate === null ? " · 汇率待补，稍后自动重试" : ""} · 30 秒内可撤销`, duration: Math.max(1000, until ? until - Date.now() : 30000), action: until ? { label: "撤销", onClick: () => void undo() } : undefined });
+      toast.success("本次续费已保存", { description: `${money(payment.amount,payment.currency)} · ${result.item.endDate} 到期${result.renewal.payment?.rate === null ? " · 汇率稍后自动补齐" : ""} · 30 秒内可撤销`, duration: Math.max(1000, until ? until - Date.now() : 30000), action: until ? { label: "撤销", onClick: () => void undo() } : undefined });
       void loadRecords(true);
     } catch (reason) {
       if (epoch !== mutationEpoch.current) return;
-      toast.error(reason instanceof Error ? reason.message : "续费记录失败");
       void loadRecords(true);
+      throw reason;
     } finally { pendingRenewals.current.delete(item.id); setQuickRenewing(current => { const next = new Set(current); next.delete(item.id); return next; }); }
   }
 
@@ -316,7 +319,7 @@ export default function Dashboard() {
       await apiRequest("/auth/logout", {});
       setAuthRequired(true); setItems([]);
       setSelected(null); setEditorOpen(false); setConfirmAction(null); setShowReminders(false); setDraft(blankDraft(today));
-      setBackupOpen(false); setHistoryOpen(false); setReportOpen(false); setShowCostBreakdown(false); setHistoryItem(null); setUndoReceipts({});
+      setBackupOpen(false); setHistoryOpen(false); setReportOpen(false); setShowCostBreakdown(false); setHistoryItem(null); setRenewalItem(null); setUndoReceipts({});
       await loadRecords();
       toast.success("已退出登录");
     } catch (error) { toast.error(error instanceof Error ? error.message : "退出失败"); }
@@ -390,7 +393,7 @@ export default function Dashboard() {
           {!authRequired && <div className="header-toolbox" role="toolbar" aria-label="会员工具">
             <button className={`button header-utility${reportOpen ? " is-active" : ""}`} aria-label={reportOpen ? "返回看板" : "支出分析"} title={reportOpen ? "返回看板" : "支出分析"} onClick={() => setReportOpen(value => !value)}><BarChart3 size={17} /><span>{reportOpen ? "返回看板" : "支出分析"}</span></button>
             <button className={`button header-utility notification-button${due.length ? " has-reminders" : ""}`} aria-label={`提醒中心${due.length ? `，${due.length} 项待查看` : ""}`} title="提醒中心" onClick={() => setShowReminders(true)}><Bell size={17} /><span>提醒中心</span>{due.length > 0 && <b aria-hidden="true">{due.length}</b>}</button>
-            <button className="button header-utility" aria-label="流水" title="续费流水" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={17} /><span>流水</span></button>
+            <button className="button header-utility" aria-label="续费记录" title="续费记录" onClick={() => { setHistoryItem(null); setHistoryOpen(true); }}><History size={17} /><span>续费记录</span></button>
             <button className="button header-utility" aria-label="备份" title="数据备份与恢复" onClick={() => setBackupOpen(true)}><Upload size={17} /><span>备份</span></button>
             <button className="button header-utility sign-out" aria-label="退出" title="退出登录" onClick={() => void signOut()}><LogOut size={17} /><span>退出</span></button>
           </div>}
@@ -421,7 +424,7 @@ export default function Dashboard() {
     <Dialog open={!authRequired && editorOpen} onOpenChange={setEditorOpen}><DialogContent className="membership-dialog"><CompactDialogHeader title={selected ? `管理 ${selected.name}` : "添加订阅"} helpLabel="会员设置说明" help="填写会员名称、费用和到期时间。这里只记录信息，不会操作服务商账号或扣款。私人备注仅登录后可见，请勿保存密码。" /><form className="membership-form" onSubmit={event => { event.preventDefault(); void saveDraft(); }}>
       {!selected && <div className="template-picker"><span>常用模板</span><div>{membershipTemplates.map(template => <button type="button" key={template.key} className="template-chip" onClick={() => applyTemplate(template)}>{template.name}</button>)}</div></div>}
       <div className="form-grid"><label className="form-field wide"><span>会员名称 *</span><input autoFocus required maxLength={60} value={draft.name} onChange={e => changeDraft("name", e.target.value)} placeholder="例如：Netflix" /></label><label className="form-field"><span>套餐名称</span><input maxLength={80} value={draft.plan} onChange={e => changeDraft("plan", e.target.value)} placeholder="例如：标准会员" /></label><label className="form-field"><span>分类</span><select aria-label="分类" value={draft.category} onChange={e => changeDraft("category", e.target.value)}>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field"><span>费用 *</span><input required min="0" step="0.01" type="number" value={draft.amount} onChange={e => changeDraft("amount", e.target.value)} /></label><CurrencyFields value={draft} startDate={draft.startDate} onChange={patch => setDraft(current => ({ ...current, ...patch }))} /><label className="form-field"><span>续费周期</span><select aria-label="续费周期" value={draft.cycle} onChange={e => changeDraft("cycle", e.target.value as Draft["cycle"])}>{Object.entries(cycles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{draft.cycle === "custom" && <label className="form-field"><span>自定义天数</span><input min="1" max="3650" type="number" value={draft.customDays} onChange={e => changeDraft("customDays", e.target.value)} /></label>}<label className="form-field"><span>本期开始日期 *</span><input required type="date" value={draft.startDate} onChange={e => changeDraft("startDate", e.target.value)} /></label><label className="form-field"><span>本期到期日期 *</span><input required type="date" value={draft.endDate} onChange={e => changeDraft("endDate", e.target.value)} /></label><label className="form-field"><span>提前提醒</span><select aria-label="提前提醒" value={draft.reminderDays} onChange={e => changeDraft("reminderDays", e.target.value)}><option value="0">到期当天</option><option value="1">提前 1 天</option><option value="3">提前 3 天</option><option value="7">提前 7 天</option><option value="14">提前 14 天</option><option value="30">提前 30 天</option></select></label><div className="switch-field"><Switch id="auto-renew-toggle" aria-label="自动续费" checked={draft.autoRenew} onCheckedChange={checked => changeDraft("autoRenew", checked)} /><span className="field-label-with-help"><label htmlFor="auto-renew-toggle">自动续费</label><ContextHelp label="自动续费说明">到期日自动更新下一期，关掉网页也生效。只更新看板、不实际扣款；停订或扣款失败时请关闭。</ContextHelp></span></div><label className="form-field wide"><span>私人备注</span><textarea maxLength={500} value={draft.note} onChange={e => changeDraft("note", e.target.value)} placeholder="填写备注" /></label></div>
-      {selected && !selected.autoRenew && <div className="renewal-action"><div><div className="field-label-with-help"><strong>记录下一期续费</strong><ContextHelp label="快捷续费说明">点击即表示你已付款：按已保存周期顺延一次，同时记录今天的付款。日期可在流水里更正；不向服务商发起扣款，30 秒内可撤销。</ContextHelp></div>{draftChanged && <small role="status">请先保存或取消表单修改。</small>}</div><button type="button" className="button light" disabled={saving || draftChanged || quickRenewing.has(selected.id) || Boolean(undoReceipts[selected.id])} onClick={() => void quickRenew(selected)}><Check size={16} />快捷续费</button></div>}
+      {selected && !selected.autoRenew && <div className="renewal-action"><div><div className="field-label-with-help"><strong>已经付款，续下一期</strong><ContextHelp label="续费说明">填写这次实付的金额、币种和付款日期。保存后直接记为已支付，并在现有到期日后增加一期。</ContextHelp></div>{draftChanged && <small role="status">请先保存或取消表单修改。</small>}</div><button type="button" className="button light" disabled={saving || draftChanged || quickRenewing.has(selected.id) || Boolean(undoReceipts[selected.id])} onClick={() => {setRenewalItem(selected);setEditorOpen(false);}}><Plus size={16} />记录续费</button></div>}
       {periodPrompt && <div className="period-prompt" role="status"><span>到期日曾手动调整，是否改为 {periodPrompt}？</span><button type="button" className="button light" onClick={suggestEndDate}>重新计算</button><button type="button" className="text-action" onClick={()=>setPeriodPrompt(null)}>保留原日期</button></div>}
       <div className="dialog-actions"><div className="dialog-left-actions">{selected && <button type="button" className="text-danger" onClick={() => setConfirmAction({ kind: "delete", item: selected })}><Trash2 size={15} />删除</button>}{selected && <button type="button" className="text-action" onClick={() => void downloadCalendar(selected)}><Download size={15} />导出日历</button>}{selected && <button type="button" className="text-action" onClick={() => { setHistoryItem(selected); setEditorOpen(false); setHistoryOpen(true); }}><History size={15} />续费流水</button>}</div><div className="dialog-right-actions"><button type="button" className="button light" onClick={() => setEditorOpen(false)}>取消</button><button type="submit" className="button primary" disabled={saving}>{saving ? "保存中…" : <><Check size={15} />保存</>}</button></div></div>
     </form></DialogContent></Dialog>
@@ -444,7 +447,8 @@ export default function Dashboard() {
         <div className="cost-total"><span>合计 / 月</span><strong>¥{currency(monthly)}</strong></div>
       </DialogContent>
     </Dialog>
-    {!authRequired && historyOpen && <HistoryDialog key={historyItem?.id || "all"} open={historyOpen} onOpenChange={setHistoryOpen} subscriptionId={historyItem?.id} subscriptionName={historyItem?.name} items={items} onChanged={() => void loadRecords(true)} />}
+    {!authRequired && renewalItem && <RenewalDialog key={renewalItem.id} item={renewalItem} today={today} onClose={() => setRenewalItem(null)} onSave={payment => quickRenew(renewalItem,payment)} />}
+    {!authRequired && historyOpen && <HistoryDialog key={historyItem?.id || "all"} open={historyOpen} onOpenChange={setHistoryOpen} subscriptionId={historyItem?.id} subscriptionName={historyItem?.name} items={items} onChanged={() => void loadRecords(true)} onRenew={item => {setHistoryOpen(false);setRenewalItem(item);}} />}
     {!authRequired && backupOpen && <BackupDialog open={backupOpen} onOpenChange={setBackupOpen} onImported={async () => { await loadRecords(); }} />}
     <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onSuccess={loadRecords} />
     <Toaster position="bottom-right" richColors theme="light" />

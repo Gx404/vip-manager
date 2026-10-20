@@ -3,21 +3,22 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { categories } from "../../shared/subscriptions.ts";
 import { currencyCodes } from "../../shared/currency.ts";
-import { paymentState, type Payment, type PaymentInput, type PaymentPreview } from "../../shared/payments.ts";
-import { dateSchema, idSchema } from "./validation.ts";
+import { paymentState, type Payment, type PaymentInput, type PaymentPreview, type RenewalPaymentInput } from "../../shared/payments.ts";
+import { dateSchema, idSchema, paymentAmountSchema, renewalPaymentSchema } from "./validation.ts";
 import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
 import { transaction } from "./database.ts";
 import { ApiError } from "./errors.ts";
 import { dateInTimeZone } from "../../shared/billing.ts";
 
-const amount = z.number().finite().min(0).max(10_000_000).refine(n => Math.abs(n * 100 - Math.round(n * 100)) < 0.00001, "金额最多两位小数。");
+const amount = paymentAmountSchema;
 const fields = { amount, currency: z.enum(currencyCodes), paidOn: dateSchema, startDate: dateSchema, endDate: dateSchema, note: z.string().trim().max(500) };
 export const paymentInputSchema = z.object(fields).strict().refine(p => p.endDate > p.startDate, "到期日期必须晚于开始日期。");
 export const paymentSchema = z.object({ ...fields, rate: z.number().finite().positive().max(100_000).nullable(), rateDate: dateSchema.nullable(),
   category: z.enum(categories), plan: z.string().max(80), source: z.enum(["backfill", "renewal"]),
   confirmedAt: z.string().datetime(), voidedAt: z.string().datetime().nullable(),
   dateCorrections: z.array(z.object({from:dateSchema,to:dateSchema,changedAt:z.string().datetime()}).strict()).max(100).optional(),
+  corrections: z.array(z.object({previous:renewalPaymentSchema,changedAt:z.string().datetime()}).strict()).max(100).optional(),
 }).strict().refine(p => p.endDate > p.startDate &&
   ((p.rate === null && p.rateDate === null && p.currency !== "CNY") ||
     (p.rate !== null && p.rateDate !== null && p.rateDate <= (p.paidOn > p.startDate ? p.paidOn : p.startDate) && (p.currency !== "CNY" || p.rate === 1))), "支付账期或汇率不正确。")
@@ -117,15 +118,17 @@ export class PaymentService {
   }
 
   /** Called inside the renewal transaction. Payment is immediate; FX is filled asynchronously. */
-  recordRenewalPayment(owner: number, logId: string, paidOn: string) {
+  recordRenewalPayment(owner: number, logId: string, paidOn: string, details?: RenewalPaymentInput) {
     idSchema.parse(logId); dateSchema.parse(paidOn); this.checkDate({paidOn,startDate:paidOn});
     const history = new RenewalHistory(this.db), log = renewalFromRow(history.get(owner,logId));
     if (paymentState(log) !== "pending") throw new ApiError(409,"该流水已处理，请刷新查看。");
     if (log.amount === null) throw new ApiError(400,"流水缺少付款金额。");
     if (this.duplicate(owner,log.subscriptionId,log.newStartDate,log.newEndDate,log.id)) throw new ApiError(409,"该账期已有流水，请先核对，避免重复统计。");
-    const sub = this.subscription(owner,log.subscriptionId), currency = log.currency ?? "CNY";
-    const payment: Payment = {amount:log.amount,currency,paidOn,startDate:log.newStartDate,endDate:log.newEndDate,note:"",
-      rate:currency === "CNY" ? 1 : null,rateDate:currency === "CNY" ? paidOn : null,
+    const entry = renewalPaymentSchema.parse(details ?? {amount:log.amount,currency:log.currency ?? "CNY",paidOn,note:""});
+    this.checkDate({...entry,startDate:log.newStartDate});
+    const sub = this.subscription(owner,log.subscriptionId);
+    const payment: Payment = {...entry,startDate:log.newStartDate,endDate:log.newEndDate,
+      rate:entry.currency === "CNY" ? 1 : null,rateDate:entry.currency === "CNY" ? entry.paidOn : null,
       category:String(sub.category) as Payment["category"],plan:String(sub.plan),source:"renewal",confirmedAt:this.clock().toISOString(),voidedAt:null};
     this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,logId);
     return {log:renewalFromRow(history.get(owner,logId))};
@@ -180,6 +183,44 @@ export class PaymentService {
       if (JSON.stringify(log.payment) !== original) throw new ApiError(409,"流水已变化，请刷新后重试。");
       const payment: Payment = {...log.payment,...fx,paidOn:input.paidOn,dateCorrections:[...(log.payment.dateCorrections??[]),{from:log.payment.paidOn,to:input.paidOn,changedAt:this.clock().toISOString()}]};
       this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,input.id);
+      return {log:{...log,payment}};
+    });
+  }
+
+  /** Correct one real charge while retaining its previous values and service period. */
+  async correct(owner: number, value: unknown) {
+    const input = z.object({id:idSchema,entry:renewalPaymentSchema,expected:renewalPaymentSchema}).strict().parse(value);
+    this.checkDate({...input.entry,startDate:input.entry.paidOn});
+    const history = new RenewalHistory(this.db);
+    const details = (payment: Payment): RenewalPaymentInput => ({amount:payment.amount,currency:payment.currency,paidOn:payment.paidOn,note:payment.note});
+    const matches = (payment: Payment, expected: RenewalPaymentInput) => JSON.stringify(details(payment)) === JSON.stringify(expected);
+    const before = renewalFromRow(history.get(owner,input.id));
+    if (paymentState(before) !== "paid" || !before.payment) throw new ApiError(409,"只有已支付记录可以修改付款。");
+    if (!matches(before.payment,input.expected)) throw new ApiError(409,"付款记录已变化，请刷新后重试。");
+    if (matches(before.payment,input.entry)) return {log:before};
+    if ((before.payment.corrections?.length ?? 0) >= 100) throw new ApiError(409,"修改次数已达上限。");
+    const fx = before.payment.currency === input.entry.currency && before.payment.paidOn === input.entry.paidOn
+      ? {rate:before.payment.rate,rateDate:before.payment.rateDate} : await this.lookupPaymentRate(input.entry);
+    return transaction(this.db, () => {
+      const log = renewalFromRow(history.get(owner,input.id));
+      if (paymentState(log) !== "paid" || !log.payment || !matches(log.payment,input.expected) ||
+          log.payment.startDate !== before.payment!.startDate || log.payment.endDate !== before.payment!.endDate) {
+        throw new ApiError(409,"付款记录已变化，请刷新后重试。");
+      }
+      // A completed background FX lookup may have filled the same unchanged quote.
+      const quote = log.payment.currency === input.entry.currency && log.payment.paidOn === input.entry.paidOn
+        ? {rate:log.payment.rate,rateDate:log.payment.rateDate} : fx;
+      const payment: Payment = {...log.payment,...input.entry,...quote,
+        corrections:[...(log.payment.corrections ?? []),{previous:details(log.payment),changedAt:this.clock().toISOString()}]};
+      this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=?,undo_until=NULL WHERE user_id=? AND id=?")
+        .run(JSON.stringify(payment),owner,input.id);
+      // Follow the latest renewal only; a separately edited or newer price takes precedence.
+      if (payment.source === "renewal") this.db.prepare(`UPDATE subscriptions SET original_amount_cents=?,currency=?,purchase_date=?,
+        fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source='frankfurter',rate_pending=?,amount_cents=?,version=version+1,updated_at=?
+        WHERE user_id=? AND id=? AND start_date=? AND end_date=? AND original_amount_cents=? AND currency=? AND purchase_date=?`)
+        .run(Math.round(payment.amount*100),payment.currency,payment.paidOn,payment.rate ?? 1,payment.rateDate ?? payment.paidOn,
+          Number(payment.rate === null),Math.round(payment.amount*(payment.rate ?? 1)*100),this.clock().getTime(),owner,log.subscriptionId,
+          log.newStartDate,log.newEndDate,Math.round(log.payment.amount*100),log.payment.currency,log.payment.paidOn);
       return {log:{...log,payment}};
     });
   }

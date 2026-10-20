@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -6,38 +7,47 @@ import { CompactDialogHeader } from "@/components/context-help";
 import { PaymentForm } from "@/components/payment-form";
 import { apiRequest } from "@/lib/api";
 import type { RenewalLog } from "../../../shared/renewals.ts";
-import type { Subscription } from "@/lib/subscriptions";
+import { dateKey, type Subscription } from "@/lib/subscriptions";
 import { paymentState, paymentCny } from "../../../shared/payments.ts";
 import { formatDateTime } from "@/lib/dashboard-helpers";
 import { money } from "../../../shared/currency.ts";
 
-type Props = {open:boolean;onOpenChange:(open:boolean)=>void;subscriptionId?:string;subscriptionName?:string;items:Subscription[];onChanged:()=>void};
-export function HistoryDialog({open,onOpenChange,subscriptionId,subscriptionName,items,onChanged}:Props) {
+type Props = {open:boolean;onOpenChange:(open:boolean)=>void;subscriptionId?:string;subscriptionName?:string;items:Subscription[];onChanged:()=>void;onRenew:(item:Subscription)=>void};
+export function HistoryDialog({open,onOpenChange,subscriptionId,subscriptionName,items,onChanged,onRenew}: Props) {
   const [logs,setLogs]=useState<RenewalLog[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
-  const [revision,setRevision]=useState(0),[filter,setFilter]=useState(subscriptionId??""),[month,setMonth]=useState(""),[status,setStatus]=useState("all");
-  const [form,setForm]=useState<"backfill"|RenewalLog|null>(null),[target,setTarget]=useState<{log:RenewalLog;action:"delete"|"void"}|null>(null),[busy,setBusy]=useState(false);
+  const [revision,setRevision]=useState(0),[filter,setFilter]=useState(subscriptionId ?? "");
+  const [form,setForm]=useState<RenewalLog|null>(null),[target,setTarget]=useState<{log:RenewalLog;action:"delete"|"void"}|null>(null),[busy,setBusy]=useState(false);
   const [offset,setOffset]=useState(0);
-  useEffect(()=>{let active=true;setLoading(true);setError("");void apiRequest<{logs:RenewalLog[]}>("/payments").then(data=>{if(active)setLogs(data.logs);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[revision]);
+  const today=dateKey();
+  useEffect(()=>{if(!open)return;let active=true;setLoading(true);setError("");void apiRequest<{logs:RenewalLog[]}>("/payments").then(data=>{if(active)setLogs(data.logs);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[open,revision]);
   useEffect(()=>{if(!open||form)return;const refresh=()=>{if(document.visibilityState==="visible")setRevision(n=>n+1);};const timer=window.setInterval(refresh,60_000);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",refresh);};},[open,form]);
-  useEffect(()=>setOffset(0),[filter,month,status]);
-  const shown=logs.filter(log=>(!filter||log.subscriptionId===filter)&&(!month||(log.payment?.paidOn??log.newStartDate).startsWith(month))&&(status==="all"||paymentState(log)===status)).sort((a,b)=>(b.payment?.paidOn??b.newStartDate).localeCompare(a.payment?.paidOn??a.newStartDate));
+  useEffect(()=>{if(open){setFilter(subscriptionId ?? "");setForm(null);}},[open,subscriptionId]);
+  useEffect(()=>setOffset(0),[filter]);
+  const shown=logs.filter(log=>!filter||log.subscriptionId===filter).sort((a,b)=>(b.payment?.paidOn ?? b.newStartDate).localeCompare(a.payment?.paidOn ?? a.newStartDate)||b.createdAt.localeCompare(a.createdAt));
   const paid=shown.filter(log=>paymentState(log)==="paid");
   const pendingRates=paid.filter(log=>paymentCny(log.payment!)===null).length;
   const knownTotal=paid.reduce((sum,log)=>sum+(paymentCny(log.payment!)??0),0);
-  const choices=new Map(items.map(i=>[i.id,i.name+(i.plan?` · ${i.plan}`:"")]));for(const log of logs)if(!choices.has(log.subscriptionId))choices.set(log.subscriptionId,log.subscriptionName+"（已删除）");
-  function done(){setForm(null);setRevision(n=>n+1);onChanged();}
-  async function act(){if(!target)return;setBusy(true);try{await apiRequest(target.action==="delete"?"/subscriptions/history/delete":"/payments/void",{id:target.log.id});setTarget(null);setRevision(n=>n+1);onChanged();toast.success(target.action==="delete"?"已删除撤销流水":"已作废支付记录，原始信息保留");}catch(e){toast.error(e instanceof Error?e.message:"操作失败");}finally{setBusy(false);}}
-  return <><Dialog open={open} onOpenChange={value=>{if(!busy)onOpenChange(value);}}><DialogContent className="membership-dialog history-dialog ledger-dialog">
-    <CompactDialogHeader title={subscriptionName?`${subscriptionName} · 续费流水`:"续费流水"} helpLabel="续费流水说明" help="手动续费直接记录已支付；自动顺延仍需核实付款。外币按实际付款日汇率折算，查询失败时先记录原币付款、稍后自动补齐。普通流水保留，只有已撤销的续费流水可删除。" />
-    {form ? <PaymentForm items={items} initialId={typeof form==="object"?form.subscriptionId:filter||undefined} target={typeof form==="object"?form:undefined} onDone={done} onCancel={done}/> : <>
-      <div className="ledger-toolbar"><label className="form-field"><span>订阅</span><select aria-label="筛选订阅" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">全部订阅</option>{[...choices].map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label><label className="form-field"><span>付款月份</span><input aria-label="付款月份" type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><label className="form-field"><span>状态</span><select aria-label="流水状态" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">全部状态</option><option value="paid">已支付</option><option value="pending">待确认</option><option value="void">已撤销 / 作废</option></select></label><button className="button primary" disabled={!items.length} onClick={()=>setForm("backfill")}>补录历史</button></div>
-      <div className="ledger-summary"><span>已支付 {paid.length} 笔<strong>{pendingRates===paid.length&&pendingRates>0?"汇率待补":money(knownTotal)}</strong></span><small>{pendingRates>0?`${pendingRates} 笔汇率待补，未计入人民币合计 · `:""}仅统计已记录付款 · 外币为参考折算{month?" · 待确认记录按账期开始月份筛选":""}</small></div>
-      {loading?<p className="muted">读取中…</p>:error?<p className="sync-banner" role="alert">{error}<button className="text-action" onClick={()=>setRevision(n=>n+1)}>重试</button></p>:!shown.length?<div className="ledger-empty">没有符合条件的流水。可以补录以前的续费，当前账期不会改变。</div>:<div className="ledger-list">{shown.slice(offset,offset+30).map(log=>{const state=paymentState(log),p=log.payment;return <article className="ledger-row" key={log.id}>
-        <div className="ledger-row-main"><div><strong>{log.subscriptionName}</strong>{p?.plan&&<small>{p.plan}</small>}<small>{p?`付款 ${p.paidOn}`:`账期开始 ${log.newStartDate}`}</small></div><div className="ledger-row-money"><strong>{money(p?.amount??log.amount??0,p?.currency??log.currency)}</strong><span className={`payment-badge ${state}`}>{state==="paid"?(p?.rate===null?"已支付 · 汇率待补":"已支付"):state==="pending"?"待确认":"已撤销 / 作废"}</span></div></div>
-        <div className="ledger-row-bottom"><span>{p?.startDate??log.newStartDate} — {p?.endDate??log.newEndDate}</span><div>{state==="pending"&&log.periods===1&&<button className="text-action" onClick={()=>setForm(log)}>确认付款</button>}{state==="paid"&&<><button className="text-action" onClick={()=>setForm(log)}>更正付款日期</button><button className="text-action" onClick={()=>setTarget({log,action:"void"})}>作废</button></>}{log.undoneAt&&<button className="text-danger history-delete" aria-label={`删除${log.subscriptionName}的已撤销流水`} onClick={()=>setTarget({log,action:"delete"})}>删除</button>}</div></div>
-        <details className="ledger-detail"><summary>查看详情</summary><p>{p?.source==="backfill"?"历史补录":log.kind==="automatic"?"自动顺延":"手动续费"} · 记录于 {formatDateTime(log.createdAt)}</p>{p?<><p>{p.rate===null?"汇率待补 · 已保存原币付款，稍后自动重试。":`折合约 ${money(paymentCny(p)!)} · 1 ${p.currency} = ¥${p.rate} · 报价 ${p.rateDate}`}</p>{p.note&&<p>{p.note}</p>}{p.dateCorrections?.map((c,n)=><p key={n}>付款日期更正：{c.from} → {c.to} · {formatDateTime(c.changedAt)}</p>)}{p.voidedAt&&<p>作废于 {formatDateTime(p.voidedAt)}，已从统计中排除。</p>}</>:<p>这里只记录过账期变化，尚未确认付款。{log.periods>1?`包含 ${log.periods} 个周期，请用补录历史逐期记录实际付款。`:""}</p>}{p?.source!=="backfill"&&<p>原账期 {log.previousStartDate} — {log.previousEndDate}<br/>变更为 {log.newStartDate} — {log.newEndDate}</p>}</details>
-      </article>;})}</div>}
+  const item=items.find(item=>item.id===filter);
+  const choices=new Map(items.map(item=>[item.id,item.name+(item.plan?` · ${item.plan}`:"")]));
+  for(const log of logs)if(!choices.has(log.subscriptionId))choices.set(log.subscriptionId,log.subscriptionName+"（已删除）");
+  function done(){setForm(null);setRevision(n=>n+1);onChanged();toast.success("付款记录已保存");}
+  async function act(){if(!target)return;setBusy(true);try{await apiRequest(target.action==="delete"?"/subscriptions/history/delete":"/payments/void",{id:target.log.id});setTarget(null);setRevision(n=>n+1);onChanged();toast.success(target.action==="delete"?"已删除撤销记录":"付款已作废");}catch(e){toast.error(e instanceof Error?e.message:"操作失败");}finally{setBusy(false);}}
+  return <><Dialog open={open} onOpenChange={value=>{if(!busy)onOpenChange(value);}}><DialogContent className="membership-dialog history-dialog ledger-dialog simple-history-dialog" onEscapeKeyDown={event=>{if(busy)event.preventDefault();}} onPointerDownOutside={event=>{if(busy)event.preventDefault();}}>
+    <CompactDialogHeader title={subscriptionName?`${subscriptionName} · 续费记录`:"续费记录"} helpLabel="续费记录说明" help="每次续费各自保存实付金额、币种、付款日期和有效期。提前续费会在已有到期日后增加一期。外币按实际付款日参考汇率折算。" />
+    {form ? <PaymentForm target={form} onDone={done} onCancel={()=>setForm(null)} onBusyChange={setBusy} /> : <>
+      <div className="renewal-history-toolbar"><label className="form-field"><span className="sr-only">筛选订阅</span><select aria-label="筛选订阅" value={filter} onChange={event=>setFilter(event.target.value)}><option value="">全部订阅</option>{[...choices].map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>{item&&!item.autoRenew&&<button type="button" className="button primary" onClick={()=>onRenew(item)}><Plus size={16}/>记录续费</button>}</div>
+      {!loading&&!error&&paid.length>0&&<div className="renewal-history-summary"><span>{paid.length} 次已付款</span><strong>{pendingRates===paid.length?"汇率待补":money(knownTotal)}</strong><small>{pendingRates?`${pendingRates} 笔外币折算待补` : "外币为参考折算"}</small></div>}
+      {loading?<p className="muted">读取中…</p>:error?<p className="sync-banner" role="alert">{error}<button className="text-action" onClick={()=>setRevision(n=>n+1)}>重试</button></p>:!shown.length?<div className="ledger-empty">还没有续费记录。付款后点击“记录续费”，就能把新一期接在现有到期日之后。</div>:<div className="ledger-list">{shown.slice(offset,offset+30).map(log=>{
+        const state=paymentState(log),p=log.payment;
+        const start=p?.startDate ?? log.newStartDate,end=p?.endDate ?? log.newEndDate;
+        const period=start>today?"待生效":end<=today?"已结束":"使用中";
+        return <article className="ledger-row" aria-label={`${log.subscriptionName}续费记录`} key={log.id}>
+          <div className="ledger-row-main"><div><strong>{log.subscriptionName}{p?.plan&&<span className="renewal-plan"> · {p.plan}</span>}</strong><small>{p?`${p.paidOn} 付款`:"自动顺延 · 尚未记录付款"}</small></div><div className="ledger-row-money"><strong>{p||log.amount!==null?money(p?.amount ?? log.amount!,p?.currency ?? log.currency):"金额未记录"}</strong><span className={`payment-badge ${state}`}>{state==="paid"?"已支付":state==="pending"?"待确认付款":"已撤销 / 作废"}</span></div></div>
+          <div className="ledger-row-bottom"><span className="renewal-service-period"><b>{period}</b>{start} — {end}</span><div>{state==="pending"&&log.periods===1&&<button className="text-action" onClick={()=>setForm(log)}>记录已付款</button>}{state==="paid"&&<button className="text-action" onClick={()=>setForm(log)}>修改付款</button>}</div></div>
+          <details className="ledger-detail"><summary>更多信息</summary>{p?<><p>{p.rate===null?"原币付款已保存，汇率稍后自动补齐。":p.currency==="CNY"?`实付 ${money(p.amount,"CNY")}`:`折合约 ${money(paymentCny(p)!)} · 1 ${p.currency} = ¥${p.rate} · 报价 ${p.rateDate}`}</p>{p.note&&<p>{p.note}</p>}{p.dateCorrections?.map((correction,n)=><p key={`date-${n}`}>付款日期 {correction.from} → {correction.to}</p>)}{p.corrections?.map((correction,n)=><p key={`edit-${n}`}>修改前：{money(correction.previous.amount,correction.previous.currency)} · {correction.previous.paidOn} 付款{correction.previous.note&&` · ${correction.previous.note}`}</p>)}{p.voidedAt&&<p>已作废，不再计入支出。</p>}</>:<p>这条记录只更新了有效期，尚未记录实际付款。{log.periods>1?`跨过了 ${log.periods} 期。`:""}</p>}<p>记录于 {formatDateTime(log.createdAt)}</p><div className="ledger-secondary-actions">{state==="paid"&&<button className="text-danger" onClick={()=>setTarget({log,action:"void"})}>作废付款</button>}{log.undoneAt&&<button className="text-danger" onClick={()=>setTarget({log,action:"delete"})}>删除撤销记录</button>}</div></details>
+        </article>;
+      })}</div>}
       {shown.length>30&&<div className="history-pagination"><button className="button light" disabled={!offset} onClick={()=>setOffset(n=>Math.max(0,n-30))}>上一页</button><span>{offset+1}–{Math.min(offset+30,shown.length)} / {shown.length}</span><button className="button light" disabled={offset+30>=shown.length} onClick={()=>setOffset(n=>n+30)}>下一页</button></div>}
     </>}
-  </DialogContent></Dialog><AlertDialog open={Boolean(target)} onOpenChange={v=>{if(!v&&!busy)setTarget(null);}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{target?.action==="delete"?"删除这条撤销流水？":"作废这笔支付？"}</AlertDialogTitle><AlertDialogDescription>{target?.action==="delete"?"只删除已撤销的流水，不改变当前账期。删除后不能恢复。":"原始金额和记录会保留，但不再计入已支付统计。不会改变订阅账期，也不会向服务商申请退款。"}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>取消</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={e=>{e.preventDefault();void act();}}>{busy?"处理中…":target?.action==="delete"?"确认删除":"确认作废"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></>;
+  </DialogContent></Dialog><AlertDialog open={Boolean(target)} onOpenChange={value=>{if(!value&&!busy)setTarget(null);}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{target?.action==="delete"?"删除这条撤销记录？":"作废这笔付款？"}</AlertDialogTitle><AlertDialogDescription>{target?.action==="delete"?"只删除已撤销的记录，删除后不能恢复。":"原付款信息会保留，并从支出统计中排除。有效期保持现状。"}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>取消</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={event=>{event.preventDefault();void act();}}>{busy?"处理中…":target?.action==="delete"?"确认删除":"确认作废"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></>;
 }

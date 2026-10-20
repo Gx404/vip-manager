@@ -3,7 +3,7 @@ import type { CurrencySnapshot } from "./currency.ts";
 import type { Payment } from "./payments.ts";
 
 export const UNDO_RENEWAL_MS = 30_000;
-/** A ledger entry records scheduling/amount estimates, never a verified provider payment. */
+/** Schedule columns retain the previous price; payment stores the independent actual charge. */
 export type RenewalLog = CurrencySnapshot & {
   id: string; subscriptionId: string; subscriptionName: string; kind: "manual" | "automatic";
   previousStartDate: string; previousEndDate: string; newStartDate: string; newEndDate: string;

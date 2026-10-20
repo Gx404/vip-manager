@@ -1,7 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { renewDate, type Subscription } from "../../shared/subscriptions.ts";
-import { automaticPeriod, billingAnchor, dateInTimeZone } from "../../shared/billing.ts";
+import type { Subscription } from "../../shared/subscriptions.ts";
+import { automaticPeriod, billingAnchor, dateInTimeZone, nextRenewalPeriod } from "../../shared/billing.ts";
 import { actionSchema, dateSchema, subscriptionSchema } from "./validation.ts";
 import { ApiError } from "./errors.ts";
 import { transaction } from "./database.ts";
@@ -165,8 +165,9 @@ export class SubscriptionService {
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
           .run(String(log.previous_start_date),String(log.previous_end_date),String(log.previous_anchor_date),now,owner,item.id,item.version);
         this.db.prepare("UPDATE subscription_renewal_logs SET undone_at=?,undo_until=NULL WHERE user_id=? AND id=?").run(now,owner,input.logId);
-        this.db.prepare("UPDATE subscriptions SET purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(original_amount_cents*?),rate_pending=? WHERE user_id=? AND id=?")
-          .run(String(log.purchase_date),Number(log.fx_rate_to_cny),String(log.fx_rate_date),String(log.fx_rate_source),Number(log.fx_rate_to_cny),Number(log.previous_rate_pending),owner,item.id);
+        const previousAmount = Number(log.amount_cents) / Number(log.periods);
+        this.db.prepare("UPDATE subscriptions SET original_amount_cents=?,currency=?,purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(?*?),rate_pending=? WHERE user_id=? AND id=?")
+          .run(previousAmount,String(log.currency),String(log.purchase_date),Number(log.fx_rate_to_cny),String(log.fx_rate_date),String(log.fx_rate_source),previousAmount,Number(log.fx_rate_to_cny),Number(log.previous_rate_pending),owner,item.id);
         return { item: this.get(owner,item.id), renewal: renewalFromRow(this.history.get(owner,input.logId)), undoUntil: null };
       }
       if (input.action === "delete") {
@@ -187,18 +188,23 @@ export class SubscriptionService {
       } else if (input.action === "renew") {
         const now = this.clock();
         const today = dateInTimeZone(now, this.timeZone);
-        const base = item.endDate > today ? item.endDate : today;
         const savedAnchor = String(this.db.prepare("SELECT renewal_anchor_date FROM subscriptions WHERE user_id=? AND id=?").get(owner,item.id)?.renewal_anchor_date ?? "") || billingAnchor(item);
-        const anchor = item.endDate >= today ? savedAnchor : base;
-        const end = dateSchema.parse(item.endDate >= today ? automaticPeriod(item,anchor,base)!.endDate : renewDate(base,item.cycle,item.customDays));
+        const {startDate:base,endDate:end,anchor} = nextRenewalPeriod(item,today,savedAnchor);
+        dateSchema.parse(end);
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
           .run(base,end,anchor,now.getTime(),owner,item.id,item.version);
         const updated = this.get(owner,item.id);
         const recorded = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
         // Clicking manual renewal asserts payment. Record it in this same transaction;
         // an external FX request must never block or partially commit the renewal.
-        const renewal = this.payments.recordRenewalPayment(owner,recorded.id,today).log;
-        this.db.prepare("UPDATE subscriptions SET rate_pending=CASE WHEN currency='CNY' THEN 0 ELSE 1 END,purchase_date=? WHERE user_id=? AND id=?").run(today,owner,item.id);
+        const renewal = this.payments.recordRenewalPayment(owner,recorded.id,input.payment?.paidOn ?? today,input.payment).log;
+        const payment = renewal.payment!;
+        const rate = payment.currency === "CNY" ? 1 : payment.currency === item.currency ? item.fxRateToCny ?? 1 : 1;
+        this.db.prepare(`UPDATE subscriptions SET original_amount_cents=?,currency=?,purchase_date=?,fx_rate_to_cny=?,
+          fx_rate_date=?,fx_rate_source=?,amount_cents=?,rate_pending=? WHERE user_id=? AND id=?`)
+          .run(Math.round(payment.amount*100),payment.currency,payment.paidOn,rate,
+            payment.currency === item.currency && item.fxRateDate! <= payment.paidOn ? item.fxRateDate! : payment.paidOn,
+            payment.currency === "CNY" ? "manual" : "frankfurter",Math.round(payment.amount*rate*100),Number(payment.currency !== "CNY"),owner,item.id);
         const log = this.history.get(owner,renewal.id);
         return { item: this.get(owner,item.id), renewal, undoUntil: new Date(Number(log.undo_until)).toISOString() };
       }
