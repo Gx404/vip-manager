@@ -1,4 +1,4 @@
-import type { RenewalLog } from "./renewals.ts";
+import type { BillingFact, RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
 import { monthlyCostCny, type Subscription } from "./subscriptions.ts";
 import { allocatedEntry, entryAmount, reportEntries, type ReportEntry } from "./report-entries.ts";
@@ -11,11 +11,11 @@ export function allocatedPayment(log: RenewalLog, period: string): number | null
 }
 
 /** Known subscription periods supplement the ledger; confirmed cash remains separately identifiable. */
-export function paymentReport(logs: RenewalLog[], items: Subscription[], today: string, period = today.slice(0,7), basis: ReportBasis = "cash") {
+export function paymentReport(logs: RenewalLog[], items: Subscription[], today: string, period = today.slice(0,7), basis: ReportBasis = "cash", billingFacts: BillingFact[] = []) {
   const paid = logs.filter(log => paymentState(log)==="paid" && log.payment!.paidOn<=today);
   const sum = (rows: RenewalLog[]) => rows.reduce((n,log)=>n+(paymentCny(log.payment!) ?? 0),0);
   const missing = (rows: RenewalLog[]) => rows.filter(log=>paymentCny(log.payment!) === null).length;
-  const sources=reportEntries(logs,items,today), entries=sources[basis];
+  const sources=reportEntries(logs,items,today,billingFacts), entries=sources[basis];
   // Both report views use one billing bucket: a known payment belongs to its
   // paid month, while an estimate uses the saved period start as its record
   // month. The cash view still filters out inferred entries whose period is

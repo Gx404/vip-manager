@@ -67,7 +67,7 @@ test("pending FX refresh shares a database lock and cannot overwrite a concurren
   let release!:()=>void;const waiting=new Promise<void>(r=>{release=r;});let requested!:()=>void;const startVoid=new Promise<void>(r=>{requested=r;});
   const pending=new PaymentService(db,new ExchangeRates(async()=>{requested();await waiting;return Response.json({date:"2024-10-16",base:"USD",quote:"CNY",rate:7});})).refreshPendingRates();
   await startVoid;payments.void(1,{id});release();await pending;
-  assert.equal(paymentState(payments.all(1)[0]),"void");assert.equal(payments.all(1)[0].payment!.rate,null);
+  assert.deepEqual(payments.all(1),[]);
 });
 
 test("validation errors are not downgraded to FX pending, and legacy numeric snapshots remain compatible",async t=>{

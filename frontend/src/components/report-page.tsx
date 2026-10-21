@@ -3,19 +3,20 @@ import { ArrowLeft, ArrowUpRight, TrendingUp } from "lucide-react";
 import { money } from "../../../shared/currency.ts";
 import { paymentReport } from "../../../shared/payment-reports.ts";
 import type { Subscription } from "@/lib/subscriptions";
-import type { RenewalLog } from "../../../shared/renewals.ts";
+import type { BillingFact, RenewalLog } from "../../../shared/renewals.ts";
 import { apiRequest } from "@/lib/api";
 import { ServiceLogo } from "@/components/service-logo";
 
 type Props={items:Subscription[];today:string;revision:boolean;onBack:()=>void;onHistory:(id?:string)=>void};
 export function ReportPage({items,today,revision,onBack,onHistory}:Props) {
   const [logs,setLogs]=useState<RenewalLog[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+  const [billingFacts,setBillingFacts]=useState<BillingFact[]>([]);
   const [range,setRange]=useState("month"),[month,setMonth]=useState(today.slice(0,7)),[retry,setRetry]=useState(0);
-  useEffect(()=>{let active=true;setError("");setLoading(true);void apiRequest<{logs:RenewalLog[]}>("/payments").then(data=>{if(active)setLogs(data.logs);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[revision,retry]);
+  useEffect(()=>{let active=true;setError("");setLoading(true);void apiRequest<{logs:RenewalLog[];billingFacts?:BillingFact[]}>("/payments").then(data=>{if(active){setLogs(data.logs);setBillingFacts(data.billingFacts??[]);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[revision,retry]);
   useEffect(()=>{const refresh=()=>{if(document.visibilityState==="visible")setRetry(n=>n+1);};const timer=window.setInterval(refresh,60_000);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",refresh);};},[]);
   const selectedMonth=/^\d{4}-(0[1-9]|1[0-2])$/.test(month)?month:today.slice(0,7);
   const year=selectedMonth.slice(0,4);
-  const report=paymentReport(logs,items,today,range==="all"?"":range==="year"?year:selectedMonth,"accrual");
+  const report=paymentReport(logs,items,today,range==="all"?"":range==="year"?year:selectedMonth,"accrual",billingFacts);
   const chart=range==="all"?report.years:report.months;
   const availableYears=[...new Set([...report.years.map(row=>row.key),year])].sort().reverse();
   const periodLabel=range==="all"?"全部记录":range==="year"?`${year} 年`:`${year} 年 ${Number(selectedMonth.slice(5))} 月`;

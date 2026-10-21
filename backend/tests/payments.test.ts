@@ -51,20 +51,21 @@ test("confirmation enriches one original audit, is single-use and cannot be undo
   assert.throws(()=>new RenewalHistory(db).deleteUndone(1,renewal.renewal!.id),{status:409});
 });
 
-test("voids retain payment details, exclude totals and allow corrected backfill; backups preserve all",async t=>{
+test("voids remove payment details, exclude totals and allow a corrected payment; backups preserve exclusions",async t=>{
   const {db,item,payments,backups,service}=setup();t.after(()=>db.close());
   await payments.add(1,{subscriptionId:item.id,entries:[entry()]});const log=payments.all(1)[0];
   const preview=backups.preview(1,backups.export(1));payments.void(1,{id:log.id});
-  assert.equal(payments.all(1)[0].payment!.amount,25);assert.ok(payments.all(1)[0].payment!.voidedAt);
-  assert.equal(paymentReport(payments.all(1),[],"2024-12-01","").total,0);
+  assert.deepEqual(payments.all(1),[]);
+  assert.equal(paymentReport(payments.all(1),[],"2024-12-01","","cash",new RenewalHistory(db).facts(1)).total,0);
   assert.throws(()=>backups.import(1,{backup:backups.export(1),mode:"merge",expectedRevision:preview.revision}),{status:409});
   await payments.add(1,{subscriptionId:item.id,entries:[{...entry(),amount:30}]});
-  const backup=backups.export(1);assert.equal(backup.formatVersion,3);
+  const backup=backups.export(1);assert.equal(backup.formatVersion,4);
   backups.import(2,{backup,mode:"merge",expectedRevision:backups.preview(2,backup).revision});
   assert.deepEqual(payments.all(2),payments.all(1));
+  assert.deepEqual(backups.export(2).billingFacts,backup.billingFacts);
   assert.equal(paymentReport(payments.all(2),[],"2024-12-01","").total,120);
   assert.equal(service.list(1).items[0].startDate,item.startDate);
-  assert.throws(()=>new RenewalHistory(db).deleteUndone(1,log.id),{status:409});
+  assert.throws(()=>new RenewalHistory(db).deleteUndone(1,log.id),{status:404});
 });
 
 test("failed FX keeps paid records pending conversion, while insert failure rolls back the whole batch",async t=>{
@@ -137,5 +138,5 @@ test("payment date corrections preserve audit, amounts, coverage and backups whi
   await assert.rejects(payments.correctDate(1,{id:log.id,paidOn:"2024-05-21",expectedPaidOn:"2024-10-10"}),{status:409});
   const backup=backups.export(1);backups.import(2,{backup,mode:"merge",expectedRevision:backups.preview(2,backup).revision});
   assert.deepEqual(payments.all(2),payments.all(1));
-  payments.void(1,{id:log.id});await assert.rejects(payments.correctDate(1,{id:log.id,paidOn:"2024-05-21",expectedPaidOn:"2024-05-20"}),{status:409});
+  payments.void(1,{id:log.id});await assert.rejects(payments.correctDate(1,{id:log.id,paidOn:"2024-05-21",expectedPaidOn:"2024-05-20"}),{status:404});
 });

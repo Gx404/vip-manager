@@ -37,7 +37,7 @@ test("active manual and automatic history stays protected even after the subscri
   assert.deepEqual(history.list(1),before);
 });
 
-test("deleting undone history is owner-scoped, preserves membership and invalidates stale backup previews", t => {
+test("undo automatically removes history, preserves membership and invalidates stale backup previews", t => {
   const db = openDatabase(":memory:"); t.after(() => db.close());
   db.exec("INSERT INTO users VALUES(1,'owner','test-hash',0),(2,'other','other-test-hash',0)");
   const service = new SubscriptionService(db,"Asia/Shanghai");
@@ -45,15 +45,14 @@ test("deleting undone history is owner-scoped, preserves membership and invalida
   const original = service.execute(1,{ action:"create", item:item() }).item!;
   const command = { action:"renew", id:original.id, version:0, requestId:randomUUID() };
   const renewed = service.execute(1,command);
+  const backup = backups.export(1), preview = backups.preview(1,backup);
   service.execute(1,{ action:"undoRenew", id:original.id, version:1, logId:renewed.renewal!.id });
   const other = service.execute(2,{ action:"create", item:item() }).item!;
   service.execute(2,{ action:"renew", id:other.id, version:0 });
   const subscriptions = service.list(1), otherHistory = history.list(2);
-  const backup = backups.export(1), preview = backups.preview(1,backup);
   assert.throws(() => history.deleteUndone(2,renewed.renewal!.id),{ status:404 });
-  assert.equal(history.list(1).total,1);
-  assert.deepEqual(history.deleteUndone(1,renewed.renewal!.id),{ id:renewed.renewal!.id });
   assert.deepEqual(history.list(1,original.id),{ logs:[], total:0 });
+  assert.equal(history.facts(1)[0].id,renewed.renewal!.id);
   assert.deepEqual(service.list(1),subscriptions);
   assert.deepEqual(history.list(2),otherHistory);
   assert.equal(backups.export(1).renewalLogs.length,0);
@@ -62,7 +61,7 @@ test("deleting undone history is owner-scoped, preserves membership and invalida
   assert.throws(() => history.deleteUndone(1,renewed.renewal!.id),{ status:404 });
 });
 
-test("history deletion API requires authentication, CSRF and a valid ID, and accepts only undone entries", async t => {
+test("history deletion API protects active entries and undo removes them immediately", async t => {
   const config = readConfig({ PUBLIC_ORIGIN:"http://frontend.test", COOKIE_SECURE:"false", PUBLIC_DASHBOARD:"true", ADMIN_PASSWORD:randomUUID() });
   const db = openDatabase(":memory:"); await bootstrapAdmin(db,config);
   const server = createApp(db,config).listen(0,"127.0.0.1");
@@ -89,8 +88,10 @@ test("history deletion API requires authentication, CSRF and a valid ID, and acc
   assert.equal(undo.status,200);
   const restored = await undo.json() as RenewalResult;
   const deleted = await post(path,body);
-  assert.equal(deleted.status,200); assert.deepEqual(await deleted.json(),body);
+  assert.equal(deleted.status,404);
   assert.deepEqual(service.list(1).items,[restored.item]);
   assert.equal(history.list(1).total,0);
+  const ledger=await (await fetch(base+"/payments",{headers})).json() as {logs:unknown[];billingFacts:{id:string}[]};
+  assert.deepEqual(ledger.logs,[]);assert.equal(ledger.billingFacts[0].id,body.id);
   assert.equal((await post(path,body)).status,404);
 });

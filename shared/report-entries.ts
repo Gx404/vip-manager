@@ -1,4 +1,4 @@
-import type { RenewalLog } from "./renewals.ts";
+import type { BillingFact, RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
 import { dateNumber, type Subscription } from "./subscriptions.ts";
 import type { CurrencyCode } from "./currency.ts";
@@ -22,7 +22,7 @@ function subtract(segments: Interval[], covered: Interval): Interval[] {
 }
 
 /** Read-only reporting inputs: never create payment confirmations from subscription estimates. */
-export function reportEntries(logs: RenewalLog[], items: Subscription[], today: string) {
+export function reportEntries(logs: RenewalLog[], items: Subscription[], today: string, billingFacts: BillingFact[] = []) {
   const confirmed: ReportEntry[] = logs.filter(log => paymentState(log) === "paid" && log.payment!.paidOn <= today).map(log => {
     const p = log.payment!;
     return { id: log.id, subscriptionId: log.subscriptionId, label: log.subscriptionName, plan: p.plan, category: p.category,
@@ -38,11 +38,14 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
   }
   // Renewal audits also preserve the previous entered period and its price. Keep that
   // known history after renewal, without extrapolating missing cycles backwards.
-  for (const log of [...logs].sort((a,b) => b.createdAt.localeCompare(a.createdAt))) {
-    if (log.undoneAt || log.payment?.source === "backfill" || log.previousStartDate >= log.newStartDate || log.previousStartDate > today || log.amount === null || log.previousRatePending) continue;
-    const item = items.find(item => item.id === log.subscriptionId);
+  const schedules=[...logs.filter(log=>!log.undoneAt&&log.payment?.source!=="backfill").map(log=>{
+    const item=items.find(item=>item.id===log.subscriptionId);
+    return {...log,plan:log.payment?.plan??item?.plan??"",category:log.payment?.category??item?.category??"其他服务"};
+  }),...billingFacts.flatMap(fact=>fact.schedule?[{...fact.schedule,id:fact.id,subscriptionId:fact.subscriptionId}]:[])].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  for (const log of schedules) {
+    if (log.previousStartDate >= log.newStartDate || log.previousStartDate > today || log.amount === null || log.previousRatePending) continue;
     candidates.push({ id: `schedule:${log.id}`, subscriptionId: log.subscriptionId, label: log.subscriptionName,
-      plan: log.payment?.plan ?? item?.plan ?? "", category: log.payment?.category ?? item?.category ?? "其他服务",
+      plan: log.plan, category: log.category,
       startDate: log.previousStartDate, endDate: log.previousEndDate, paidOn: log.previousStartDate,
       amount: log.amount / log.periods * (log.fxRateToCny ?? 1), originalAmount:log.amount / log.periods,currency:log.currency ?? "CNY",source: "subscription", segments: [{ startDate: log.previousStartDate, endDate: log.previousEndDate }] });
   }
@@ -56,6 +59,10 @@ export function reportEntries(logs: RenewalLog[], items: Subscription[], today: 
     // events remain estimates in accrual, but must not become inferred cash payments.
     if (log.payment) occupied.set(log.subscriptionId, [...(occupied.get(log.subscriptionId) ?? []), interval]);
     if (!log.undoneAt || log.payment) cashBlocked.set(log.subscriptionId, [...(cashBlocked.get(log.subscriptionId) ?? []), interval]);
+  }
+  for(const fact of billingFacts)if(fact.excludedPeriod){
+    occupied.set(fact.subscriptionId,[...(occupied.get(fact.subscriptionId)??[]),fact.excludedPeriod]);
+    cashBlocked.set(fact.subscriptionId,[...(cashBlocked.get(fact.subscriptionId)??[]),fact.excludedPeriod]);
   }
   for (const entry of candidates) {
     if (entry.amount === null || !Number.isFinite(entry.amount) || entry.amount < 0 || entry.endDate <= entry.startDate) continue;

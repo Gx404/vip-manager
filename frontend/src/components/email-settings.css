@@ -1,0 +1,27 @@
+.email-reminders .email-settings-toggle { margin-left: auto; min-height: 30px; padding: 4px 9px; gap: 5px; }
+.email-settings-form { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 16px; min-width: 0; }
+.email-settings-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.email-settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.email-settings-wide { grid-column: 1 / -1; }
+.email-settings-enabled { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; color: var(--foreground); cursor: pointer; }
+.email-settings-enabled input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: var(--primary); }
+.email-settings-enabled strong { font-size: 13px; font-weight: 600; }
+.email-settings-enabled small { display: block; color: var(--muted-foreground); font-size: 12px; margin-top: 3px; }
+.email-settings-existing { margin-left: 8px; font-size: 11px; color: var(--success); }
+.email-settings-form .email-settings-field-note { font-size: 12px; line-height: 1.6; color: var(--muted-foreground); }
+.email-settings-form input { font-size: 14px; }
+.email-settings-form input:disabled { opacity: .55; cursor: not-allowed; }
+.email-settings-form input[type="time"] { max-width: 180px; }
+.email-settings-form .inline-error { margin-top: 12px; overflow-wrap: anywhere; }
+.email-settings-advanced { margin-top: 18px; color: var(--text-secondary); font-size: 12px; }
+.email-settings-advanced summary { cursor: pointer; width: fit-content; }
+.email-settings-advanced summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+.email-settings-advanced .email-settings-grid { margin-top: 14px; }
+.email-settings-advanced p, .email-settings-note { font-size: 12px; line-height: 1.7; color: var(--muted-foreground); margin: 12px 0 0; }
+.email-settings-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.email-settings-loading { font-size: 13px; color: var(--text-secondary); padding-top: 14px; line-height: 1.7; }
+@media (max-width: 520px) {
+  .email-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .email-settings-wide { grid-column: auto; }
+  .email-reminders .email-reminder-controls { align-items: center; }
+}

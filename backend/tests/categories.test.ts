@@ -31,6 +31,7 @@ test("v6 category migration preserves money, dates, owners and history, and runs
   }
   db.exec("PRAGMA user_version=6; INSERT INTO users VALUES(1,'owner','keep-hash',1),(2,'other','keep-other-hash',2)");
   db.exec(readFileSync(new URL("../migrations/008_payment_ledger.sql",import.meta.url),"utf8"));
+  db.exec(readFileSync(new URL("../migrations/009_removed_payment_facts.sql",import.meta.url),"utf8"));
   let service = new SubscriptionService(db, "Asia/Shanghai");
   const expected = new Map<string, string>();
   for (const owner of [1, 2]) {
@@ -48,14 +49,14 @@ test("v6 category migration preserves money, dates, owners and history, and runs
       expected.set(created.id, newCategory);
     }
   }
-  db.exec("ALTER TABLE subscriptions DROP COLUMN rate_pending; ALTER TABLE subscription_renewal_logs DROP COLUMN payment_json; ALTER TABLE subscription_renewal_logs DROP COLUMN previous_rate_pending");
+  db.exec("ALTER TABLE subscriptions DROP COLUMN rate_pending; ALTER TABLE subscription_renewal_logs DROP COLUMN payment_json; ALTER TABLE subscription_renewal_logs DROP COLUMN previous_rate_pending; DROP TABLE subscription_billing_facts");
   const snapshot = (table: string) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
   const before = snapshot("subscriptions");
   const otherTables = ["users", "subscription_preferences", "subscription_renewal_logs", "automatic_renewal_events"];
   const others = otherTables.map(snapshot);
   db.close(); db = openDatabase(path);
   try {
-    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 8);
+    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 9);
     assert.equal(db.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
     const after = snapshot("subscriptions");
     assert.equal(after.length, before.length);

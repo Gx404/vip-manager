@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { removeAllCanceledRenewals } from "./billing-facts.ts";
 
 /** Open persistent SQLite and apply each checked-in schema migration exactly once. */
 export function openDatabase(filename: string): DatabaseSync {
@@ -11,12 +12,13 @@ export function openDatabase(filename: string): DatabaseSync {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     const version = Number(db.prepare("PRAGMA user_version").get()?.user_version);
-    const migrations = ["001_initial.sql", "002_automatic_renewals.sql", "003_subscription_history.sql", "004_multi_currency.sql", "005_purchase_rate_snapshots.sql", "006_email_notifications.sql", "007_subscription_categories.sql", "008_payment_ledger.sql"];
+    const migrations = ["001_initial.sql", "002_automatic_renewals.sql", "003_subscription_history.sql", "004_multi_currency.sql", "005_purchase_rate_snapshots.sql", "006_email_notifications.sql", "007_subscription_categories.sql", "008_payment_ledger.sql", "009_removed_payment_facts.sql"];
     if (version > migrations.length) throw new Error("数据库版本高于当前程序，请勿降级运行。");
     for (let index = version; index < migrations.length; index++) {
       const sql = readFileSync(new URL("../migrations/" + migrations[index], import.meta.url), "utf8");
       transaction(db, () => {
         db!.exec(sql);
+        if(index === 8) removeAllCanceledRenewals(db!);
         db!.exec("PRAGMA user_version = " + (index + 1));
       });
       db.exec("PRAGMA optimize");

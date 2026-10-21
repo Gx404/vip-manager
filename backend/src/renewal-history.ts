@@ -3,6 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Subscription } from "../../shared/subscriptions.ts";
 import { UNDO_RENEWAL_MS, type RenewalLog, type HistoryPage } from "../../shared/renewals.ts";
 import { ApiError } from "./errors.ts";
+import { billingFacts, removeCanceledRenewal } from "./billing-facts.ts";
+import { transaction } from "./database.ts";
 
 type Row = Record<string, unknown>;
 /** Convert a private ledger row to its stable API/JSON-backup representation. */
@@ -22,7 +24,7 @@ export function renewalFromRow(row: Row): RenewalLog {
   };
 }
 
-/** User-scoped ledger; renewals are transactional and deletion requires an undone entry. */
+/** User-scoped ledger; canceled entries are removed together with their payment details. */
 export class RenewalHistory {
   private db: DatabaseSync;
   constructor(db: DatabaseSync) { this.db = db; }
@@ -46,18 +48,20 @@ export class RenewalHistory {
     return row;
   }
 
+  facts(owner: number) { return billingFacts(this.db,owner); }
+
   byRequest(owner: number, requestId: string): Row | undefined {
     return this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=? AND request_id=?").get(owner,requestId);
   }
 
-  /** Delete only an already-undone entry owned by the caller, without changing the subscription. */
+  /** Legacy cleanup endpoint: active paid/pending renewals always remain protected. */
   deleteUndone(owner: number, id: string): { id: string } {
-    const result = this.db.prepare("DELETE FROM subscription_renewal_logs WHERE user_id=? AND id=? AND undone_at IS NOT NULL").run(owner,id);
-    if (Number(result.changes) !== 1) {
-      this.get(owner,id);
-      throw new ApiError(409,"只有已撤销的续费流水可以删除。","RENEWAL_NOT_UNDONE");
-    }
-    return { id };
+    return transaction(this.db,()=>{
+      const row=this.get(owner,id), log=renewalFromRow(row);
+      if(!log.undoneAt&&!log.payment?.voidedAt) throw new ApiError(409,"只有已撤销或作废的记录可以删除。","RENEWAL_NOT_UNDONE");
+      removeCanceledRenewal(this.db,row);
+      return {id};
+    });
   }
 
   list(owner: number, subscriptionId?: string, offset = 0, limit = 50): HistoryPage {

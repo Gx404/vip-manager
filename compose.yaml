@@ -18,15 +18,15 @@ services:
       TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:-loopback,linklocal,uniquelocal}
       EMAIL_CONFIG_FILE: /app/backend/data/email-settings.json
       EMAIL_NOTIFICATIONS: ${EMAIL_NOTIFICATIONS:-}
-      SMTP_HOST: ${SMTP_HOST:-smtp.qq.com}
-      SMTP_PORT: ${SMTP_PORT:-465}
-      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_TO: ${EMAIL_TO:-}
-      EMAIL_REMINDER_HOUR: ${EMAIL_REMINDER_HOUR:-9}
-      EMAIL_REMINDER_MINUTE: ${EMAIL_REMINDER_MINUTE:-0}
+      EMAIL_REMINDER_HOUR: ${EMAIL_REMINDER_HOUR:-}
+      EMAIL_REMINDER_MINUTE: ${EMAIL_REMINDER_MINUTE:-}
     volumes:
       - membership_data:/app/backend/data
     expose:

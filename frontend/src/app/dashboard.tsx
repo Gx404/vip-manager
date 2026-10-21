@@ -91,6 +91,7 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("expiry");
   const [showReminders, setShowReminders] = useState(false);
+  const [emailSettingsBusy, setEmailSettingsBusy] = useState(false);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -119,7 +120,7 @@ export default function Dashboard() {
     // Polling can discover session expiry while a secondary page is open.
     ++mutationEpoch.current;
     toast.dismiss();
-    setReportOpen(false); setShowReminders(false); setShowCostBreakdown(false);
+    setReportOpen(false); setShowReminders(false); setEmailSettingsBusy(false); setShowCostBreakdown(false);
     setEditorOpen(false); setHistoryOpen(false); setBackupOpen(false); setConfirmAction(null);
     setSelected(null); setHistoryItem(null); setRenewalItem(null); setDraft(blankDraft(dateKey())); setUndoReceipts({});
   }, [authRequired]);
@@ -429,10 +430,10 @@ export default function Dashboard() {
       <div className="dialog-actions"><div className="dialog-left-actions">{selected && <button type="button" className="text-danger" onClick={() => setConfirmAction({ kind: "delete", item: selected })}><Trash2 size={15} />删除</button>}{selected && <button type="button" className="text-action" onClick={() => void downloadCalendar(selected)}><Download size={15} />导出日历</button>}{selected && <button type="button" className="text-action" onClick={() => { setHistoryItem(selected); setEditorOpen(false); setHistoryOpen(true); }}><History size={15} />续费流水</button>}</div><div className="dialog-right-actions"><button type="button" className="button light" onClick={() => setEditorOpen(false)}>取消</button><button type="submit" className="button primary" disabled={saving}>{saving ? "保存中…" : <><Check size={15} />保存</>}</button></div></div>
     </form></DialogContent></Dialog>
 
-    <Dialog open={!authRequired && showReminders} onOpenChange={setShowReminders}><DialogContent className="membership-dialog">
+    <Dialog open={!authRequired && showReminders} onOpenChange={open => {if (!emailSettingsBusy) setShowReminders(open);}}><DialogContent className="membership-dialog" showCloseButton={!emailSettingsBusy} onEscapeKeyDown={event => {if(emailSettingsBusy) event.preventDefault();}} onPointerDownOutside={event => {if(emailSettingsBusy) event.preventDefault();}}>
       <CompactDialogHeader title="到期提醒" helpLabel="到期提醒说明" help={<><p>按每条订阅的提前提醒设置展示，打开对应订阅后可管理或记录续费。</p><p>网页内提醒只在打开页面时显示。导出 .ics 并导入日历后，可由日历应用通知；续费后需重新导出。</p></>} />
-      {!authRequired && showReminders && <EmailReminders />}
-      <div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · {money(item.amount, item.currency)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button className="button light" aria-label={`管理${item.name}`} onClick={() => { setShowReminders(false); edit(item); }}>管理</button><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => void downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂无到期提醒。</p>}</div>
+      {!authRequired && showReminders && <EmailReminders onBusyChange={setEmailSettingsBusy} />}
+      <div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · {money(item.amount, item.currency)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button className="button light" disabled={emailSettingsBusy} aria-label={`管理${item.name}`} onClick={() => { setShowReminders(false); edit(item); }}>管理</button><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => void downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂无到期提醒。</p>}</div>
     </DialogContent></Dialog>
 
     <AlertDialog open={!authRequired && Boolean(confirmAction)} onOpenChange={open => { if (!open && !saving) setConfirmAction(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>删除这条订阅？</AlertDialogTitle><AlertDialogDescription>“{confirmAction?.item.name}”将从清单删除，已有续费流水仍保留。删除后不能在页面内撤销。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={saving} onClick={event => { event.preventDefault(); void confirmChange(); }}>{saving ? "处理中…" : "确认删除"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

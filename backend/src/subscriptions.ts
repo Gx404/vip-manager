@@ -9,6 +9,7 @@ import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import type { RenewalLog } from "../../shared/renewals.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
 import { PaymentService } from "./payments.ts";
+import { billingFacts, removeCanceledRenewal } from "./billing-facts.ts";
 
 type Row = Record<string, unknown>;
 export function subscriptionFromRow(row: Row): Subscription {
@@ -62,9 +63,10 @@ export class SubscriptionService {
   /** Derive continuous early-renewal coverage from schedule audits, never FX purchase dates. */
   private withCoverage(owner: number, items: Subscription[]): Subscription[] {
     const logs = this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=? AND undone_at IS NULL ORDER BY created_at DESC").all(owner).map(renewalFromRow);
+    const removed = billingFacts(this.db,owner).flatMap(fact=>fact.schedule ? [{...fact.schedule,subscriptionId:fact.subscriptionId}] : []);
     return items.map(item => {
       let start = item.startDate, end = item.endDate;
-      const chain = logs.filter(log => log.subscriptionId === item.id && log.payment?.source !== "backfill" &&
+      const chain = [...logs.filter(log=>log.payment?.source!=="backfill"),...removed].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).filter(log => log.subscriptionId === item.id &&
         log.previousStartDate < log.newStartDate && log.previousEndDate === log.newStartDate &&
         dateInTimeZone(new Date(log.createdAt), this.timeZone) < log.previousEndDate);
       while (true) {
@@ -143,6 +145,9 @@ export class SubscriptionService {
     return transaction(this.db, () => {
       const item = this.get(owner,input.id!);
       if (input.action === "renew" && input.requestId) {
+        if(this.history.facts(owner).some(fact=>fact.requestId===input.requestId)) {
+          throw new ApiError(409,"该续费请求已撤销或作废，请刷新。","VERSION_CONFLICT");
+        }
         const previous = this.history.byRequest(owner,input.requestId);
         if (previous) {
           if (previous.subscription_id !== item.id || previous.undone_at !== null || Number(previous.resulting_version) !== item.version) {
@@ -154,6 +159,9 @@ export class SubscriptionService {
       if (item.version !== input.version) throw new ApiError(409,"记录已在其他页面修改，请刷新后再试。","VERSION_CONFLICT");
       if (input.action === "undoRenew") {
         if (!input.logId) throw new ApiError(400,"缺少续费流水标识。");
+        if (this.history.facts(owner).some(fact => fact.id === input.logId && fact.subscriptionId === item.id)) {
+          throw new ApiError(409,"这次续费已撤销或作废。","UNDO_UNAVAILABLE");
+        }
         const log = this.history.get(owner,input.logId);
         const now = this.clock().getTime();
         if (log.kind !== "manual" || log.subscription_id !== item.id || log.undone_at !== null || log.undo_until === null || Number(log.undo_until) <= now) {
@@ -168,7 +176,9 @@ export class SubscriptionService {
         const previousAmount = Number(log.amount_cents) / Number(log.periods);
         this.db.prepare("UPDATE subscriptions SET original_amount_cents=?,currency=?,purchase_date=?,fx_rate_to_cny=?,fx_rate_date=?,fx_rate_source=?,amount_cents=round(?*?),rate_pending=? WHERE user_id=? AND id=?")
           .run(previousAmount,String(log.currency),String(log.purchase_date),Number(log.fx_rate_to_cny),String(log.fx_rate_date),String(log.fx_rate_source),previousAmount,Number(log.fx_rate_to_cny),Number(log.previous_rate_pending),owner,item.id);
-        return { item: this.get(owner,item.id), renewal: renewalFromRow(this.history.get(owner,input.logId)), undoUntil: null };
+        const undoneRow=this.history.get(owner,input.logId), renewal=renewalFromRow(undoneRow);
+        removeCanceledRenewal(this.db,undoneRow);
+        return { item: this.get(owner,item.id), renewal, undoUntil: null };
       }
       if (input.action === "delete") {
         // Keep the ledger, but never let an old receipt undo a future record reusing this UUID.

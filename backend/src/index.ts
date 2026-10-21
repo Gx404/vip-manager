@@ -26,7 +26,8 @@ try {
     return 0;
   }});
   notifications = new EmailNotificationService(db, config);
-  if (config.email.enabled) stopNotifications = startNotificationScheduler(notifications);
+  // Keep the cheap disabled scan running so frontend settings can enable reminders live.
+  stopNotifications = startNotificationScheduler(notifications);
   const server = createApp(db,config,notifications).listen(config.port,config.host,() => {
     console.log("Membership API listening on " + config.host + ":" + config.port);
   });

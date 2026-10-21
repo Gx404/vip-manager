@@ -42,12 +42,12 @@
 ```sh
 npm run build
 node scripts/test-browser.mjs
-node scripts/test-history-deletion.mjs
+node scripts/test-admin-settings.mjs
 ```
 
 测试用内存数据库和随机生成的临时账号，不读取 .env，不访问正式服务，所有增删/导入仅针对内存测试数据。覆盖真实生产前端的日期联动、模板、详情内快捷续费/撤销及未保存保护、汇率查询/手填、流水、JSON 下载/合并/覆盖、两格总览和报表，以及 320/375/390/768 像素紧凑视图；截图保存在被忽略的 outputs/browser-tests。可以设置 PLAYWRIGHT_MODULE 指向已有 Playwright 的 index.mjs，BROWSER_CHANNEL=msedge 使用现有 Edge。默认 npm run check 无需 Playwright。
 
-`test-history-deletion.mjs` 单独验证未撤销流水没有删除入口、取消/失败保留记录、确认删除不改账期、删除末页最后一条后正确翻页，以及 320 像素布局；截图位于 `outputs/history-deletion-tests`。
+`test-admin-settings.mjs` 验证撤销记录直接消失、删除付款的取消/失败/确认和末页处理、有效期不变；同时用模拟发送器验证网页邮件配置、授权码不回显、保存不自动发信、失败重试，以及手机和电脑明暗模式布局。截图位于 `outputs/admin-settings-tests`。旧 `test-history-deletion.mjs` 为同一回归入口的兼容别名。
 
 生产依赖可另行运行 npm audit --omit=dev；结果会随公告变化，不代表永久安全。
 
@@ -94,4 +94,3 @@ CI 通过不代表你的域名、证书、服务器网络或手机日历已经�
 ## 修改原则
 
 数据库变更必须增加版本化迁移和备份/回退说明；修改续费逻辑必须补充日期测试；新增依赖要说明用途并保留许可证。不要提交占位实现、生产密码或真实数据。
-

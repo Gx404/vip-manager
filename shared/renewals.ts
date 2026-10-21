@@ -13,10 +13,23 @@ export type RenewalLog = CurrencySnapshot & {
 };
 export type RenewalResult = { item: Subscription; renewal: RenewalLog; undoUntil: string | null };
 export type HistoryPage = { logs: RenewalLog[]; total: number };
+/** Only valid schedule facts survive removal; deleted payment details are never retained here. */
+export type BillingFact = {
+  id: string; subscriptionId: string;
+  requestId?: string;
+  excludedPeriod?: { startDate: string; endDate: string };
+  schedule?: {
+    subscriptionName: string; plan: string; category: string;
+    previousStartDate: string; previousEndDate: string; newStartDate: string; newEndDate: string;
+    amount: number | null; currency: NonNullable<Subscription["currency"]>; fxRateToCny: number;
+    previousRatePending: boolean; periods: number; createdAt: string;
+  };
+};
 export type BackupSubscription = Subscription & { renewalAnchorDate: string };
 export type BackupDocument = {
-  application: "vip-manager"; formatVersion: 1 | 2 | 3; exportedAt: string; currency: "CNY";
+  application: "vip-manager"; formatVersion: 1 | 2 | 3 | 4; exportedAt: string; currency: "CNY";
   subscriptions: BackupSubscription[]; renewalLogs: RenewalLog[];
+  billingFacts?: BillingFact[];
 };
 export type ImportPreview = {
   revision: string; subscriptions: number; logs: number; existing: number;

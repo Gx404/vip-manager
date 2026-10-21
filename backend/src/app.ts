@@ -13,6 +13,7 @@ import { ExchangeRates } from "./exchange-rates.ts";
 import { PaymentService } from "./payments.ts";
 import { PASSWORD_MAX_LENGTH } from "./password-policy.ts";
 import type { EmailNotificationService } from "./notifications.ts";
+import { EmailSettingsService } from "./email-settings-service.ts";
 
 const cookieName = "membership_session";
 function tokenFromCookie(value: string | undefined): string {
@@ -29,6 +30,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   const history = new RenewalHistory(db);
   const backups = new BackupService(db);
   const payments = new PaymentService(db,exchangeRates,{timeZone:config.timeZone});
+  const emailSettings = new EmailSettingsService(db,config);
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxy ? config.trustedProxyRanges : false);
@@ -111,6 +113,8 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
     next();
   });
   app.get("/api/auth/session", (_req,res) => res.json({ user:res.locals.user }));
+  app.get("/api/notifications/settings", (_req,res) => res.json(emailSettings.get(res.locals.user.id)));
+  app.post("/api/notifications/settings", (req,res) => res.json(emailSettings.save(res.locals.user.id,req.body)));
   app.get("/api/notifications/status", (_req,res) => res.json(notifications?.status(res.locals.user.id) ?? { enabled:false, configured:false, recipient:"未配置", timeZone:config.timeZone, reminderHour:9, reminderMinute:0, testAvailableAt:0, recent:[] }));
   app.post("/api/notifications/test", async (req,res) => {
     z.object({}).strict().parse(req.body);
@@ -120,7 +124,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   });
   app.get("/api/exchange-rate", async (req,res) => res.json(await exchangeRates.lookup(req.query)));
   app.get("/api/subscriptions", (_req,res) => res.json(subscriptions.list(res.locals.user.id)));
-  app.get("/api/payments", (_req,res) => res.json({logs:payments.all(res.locals.user.id)}));
+  app.get("/api/payments", (_req,res) => res.json({logs:payments.all(res.locals.user.id),billingFacts:history.facts(res.locals.user.id)}));
   app.post("/api/payments/preview", async (req,res) => res.json(await payments.preview(res.locals.user.id,req.body)));
   app.post("/api/payments/backfill", async (req,res) => res.json(await payments.add(res.locals.user.id,req.body)));
   app.post("/api/payments/confirm", async (req,res) => res.json(await payments.confirm(res.locals.user.id,req.body)));

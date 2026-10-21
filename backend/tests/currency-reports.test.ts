@@ -33,7 +33,7 @@ test("30 currencies, frozen conversion and source-currency labels are unambiguou
     assert.equal(money(25, code), `${code === "CNY" ? "¥" : code + " "}25.00`);
   }
 });
-test("currency snapshots survive editing, new periods, undo and JSON v3", t => {
+test("currency snapshots survive editing, new periods, undo and JSON v4", t => {
   const { db,service,history,backups } = setup(); t.after(() => db.close());
   const initial = service.execute(1, { action: "create", item: record(fx) }).item!;
   assert.equal(initial.amount, 20); assert.equal(initial.fxRateToCny, fx.fxRateToCny);
@@ -46,11 +46,12 @@ test("currency snapshots survive editing, new periods, undo and JSON v3", t => {
   service.advanceAutomaticRenewals(new Date("2027-01-01T00:00:00Z"));
   const latest = service.list(1).items[0];
   assert.equal(latest.purchaseDate, latest.startDate); assert.equal(latest.ratePending,true); assert.equal(latest.fxRateToCny, 8);
-  assert.equal(history.list(1).logs.find(log => log.id === renewed.renewal!.id)!.fxRateToCny, fx.fxRateToCny);
-  const backup = backups.export(1); assert.equal(backup.formatVersion, 3);
+  assert.equal(history.list(1).logs.some(log => log.id === renewed.renewal!.id),false);
+  assert.equal(history.facts(1)[0].id,renewed.renewal!.id);
+  const backup = backups.export(1); assert.equal(backup.formatVersion, 4);
   backups.import(1, { backup, mode: "replace", confirmReplace: true, expectedRevision: backups.preview(1, backup).revision });
   assert.equal(service.list(1).items[0].amount, 20); assert.equal(service.list(1).items[0].fxRateToCny, 8);
-  assert.equal(history.list(1).total, 2);
+  assert.equal(history.list(1).total, 1);
 });
 test("invalid foreign data is rejected before saving and legacy v4 JSON keeps its original amount", t => {
   const { db,service,backups } = setup(); t.after(() => db.close());
@@ -83,7 +84,7 @@ test("deployed v4 migration preserves original AUD/CNY amounts, dates, user hash
     assert.equal(item.purchaseDate,"2026-09-20"); assert.equal(item.fxRateDate,"2026-09-18");
     assert.equal(db.prepare("SELECT amount_cents FROM subscriptions").get()!.amount_cents,11922);
     assert.equal(db.prepare("SELECT password_hash FROM users").get()!.password_hash,"hash-must-stay");
-    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,8);
+    assert.equal(db.prepare("PRAGMA user_version").get()!.user_version,9);
     assert.equal(db.prepare("PRAGMA integrity_check").get()!.integrity_check,"ok");
   } finally { db.close(); }
 });

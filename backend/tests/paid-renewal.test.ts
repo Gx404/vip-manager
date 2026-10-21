@@ -119,7 +119,7 @@ test("自动顺延仅生成待确认流水，不伪造实际付款", t => {
   assert.equal(paymentState(log),"pending");
 });
 
-test("重试相同续费请求不会重复付款，撤销同时排除付款且保留流水审计", t => {
+test("重试相同续费请求不会重复付款，撤销同时删除付款记录", t => {
   const {db,service,history}=fixture(); t.after(()=>db.close());
   const item=service.execute(1,{action:"create",item:record()}).item!;
   const request={action:"renew",id:item.id,version:item.version,requestId:randomUUID()};
@@ -134,7 +134,8 @@ test("重试相同续费请求不会重复付款，撤销同时排除付款且�
   assert.equal(undone.item?.startDate,item.startDate);
   assert.equal(undone.item?.endDate,item.endDate);
   assert.equal(paymentState(undone.renewal!),"void");
-  assert.equal(history.list(1).total,1);
+  assert.equal(history.list(1).total,0);
+  assert.equal(history.facts(1)[0].id,first.renewal!.id);
   assert.throws(()=>service.execute(1,request),{status:409});
 });
 

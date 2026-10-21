@@ -76,7 +76,7 @@ export class EmailNotificationService {
 
   private async sendTestInternal(user: number): Promise<void> {
     this.authorize(user);
-    if (!this.config.email.password) throw new ApiError(503, "邮件尚未配置，请在服务器运行邮件配置向导。", "EMAIL_NOT_CONFIGURED");
+    if (!this.config.email.password) throw new ApiError(503, "邮件尚未配置，请在提醒中心打开邮件配置。", "EMAIL_NOT_CONFIGURED");
     const now = this.clock().getTime();
     transaction(this.db, () => {
       const last = this.db.prepare("SELECT attempted_at FROM email_test_attempts WHERE user_id=?").get(user);

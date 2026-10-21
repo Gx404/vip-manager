@@ -12,15 +12,17 @@
 | GET | /api/auth/session | 当前用户 |
 | POST | /api/auth/logout | JSON：{}，销毁会话 |
 | GET | /api/notifications/status | 主管理员查看启用状态、脱敏邮箱、时区/时间、测试冷却和最近 5 条结果；不返回授权码 |
+| GET | /api/notifications/settings | 仅主管理员读取可编辑邮件设置、授权码是否已设置、revision 和环境变量锁定字段；不返回授权码 |
+| POST | /api/notifications/settings | `{ revision, settings }`；原子保存邮件配置并即时应用，不发邮件；版本冲突或环境覆盖返回 409 |
 | POST | /api/notifications/test | 空 JSON `{}`；只向配置地址发送，返回 `accepted:true` 表示 SMTP 接受；限流每分钟一次（429 + Retry-After），未配置 503，失败或结果不明 502 |
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
-| GET | /api/payments | 当前用户的续费与付款记录，返回 logs |
+| GET | /api/payments | 当前用户有效的续费与付款记录，返回 logs，以及报表/有效期计算用 billingFacts；已撤销和作废记录不再返回 |
 | POST | /api/payments/confirm | { id, entry }；为已有单期自动顺延记录保存实付金额、币种、付款日期和固定有效期 |
 | POST | /api/payments/update | { id, entry, expected }；修改一笔已支付记录；entry / expected 为 amount、currency、paidOn、note，保留修改前信息，冲突返回 409 |
-| POST | /api/payments/void | { id }；作废付款，保留原记录并从支出中排除 |
+| POST | /api/payments/void | { id }；兼容旧路径，现直接删除这笔付款并从支出中排除，订阅有效期不变 |
 | GET | /api/subscriptions/history | 私人流水；可选 subscriptionId、offset（默认 0）、limit（默认 50，最大 100）；返回 logs、total |
-| POST | /api/subscriptions/history/delete | JSON：{ id }；仅删除当前用户已撤销（undoneAt 非空）的流水，返回 { id }；未撤销返回 409 / RENEWAL_NOT_UNDONE，不存在或不属于当前用户返回 404 |
+| POST | /api/subscriptions/history/delete | JSON：{ id }；兼容清理当前用户已撤销或作废的旧记录；有效记录仍受保护，不存在或不属于当前用户返回 404 |
 | GET | /api/exchange-rate | 需登录；currency 与 date 查询购买日到人民币历史汇率，不写入订阅 |
 | GET | /api/backup | 当前用户全量业务 JSON，带下载响应头，不含密码或会话 |
 | POST | /api/backup/preview | { backup }，完整校验并返回计数及 revision，不写入数据 |
@@ -34,7 +36,7 @@
 - create：item 为完整会员记录；id 可留空由服务端生成 UUID。
 - update：id、version、完整 item。item.id 必须匹配 id。
 - renew：id、version、可选 requestId（UUID，用于重试幂等）、payment（amount、currency、paidOn、note）。付款日期不得晚于应用时区今天；返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。省略 payment 的兼容请求使用旧价格和今天作为付款日期。
-- undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；返回恢复后的 item，流水标记 undoneAt 而不是删除。
+- undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；恢复 item 并删除该次续费记录。兼容响应中的 renewal 只在本次结果中提供，不再持久化为已撤销记录。
 - delete：id、version。
 
 会员记录字段：id、name、plan、category、amount、currency、purchaseDate、fxRateToCny、fxRateDate、fxRateSource、cycle、customDays、startDate、endDate、reminderDays、autoRenew、note、color、version。
@@ -65,8 +67,14 @@ startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=t
 
 ## JSON 格式与并发恢复
 
-格式：application 为 vip-manager、formatVersion 导出为 2（导入接受 1 和 2）、顶层 currency 为 CNY（报表本位币），另有 exportedAt、subscriptions、renewalLogs。每项保存自身原币金额及完整汇率快照；订阅增加 renewalAnchorDate；流水字段见 [shared/renewals.ts](../shared/renewals.ts)。历史未知金额为 null，不能伪造为 0；删除订阅不删除新流水。旧人民币备份自动补齐 CNY/1，旧 v4 币种字段按上述规则升级。私人接口始终鉴权，公开看板不返回流水/锚点。
+格式：application 为 vip-manager、formatVersion 导出为 4（导入接受 1–4）、顶层 currency 为 CNY（报表本位币），另有 exportedAt、subscriptions、renewalLogs、billingFacts。每项保存自身原币金额及完整汇率快照；订阅增加 renewalAnchorDate；流水和账期事实字段见 [shared/renewals.ts](../shared/renewals.ts)。billingFacts 只保存有效旧账期、覆盖关系和费用排除区间，不保存已删除付款的金额、付款日期、备注或修改历史。历史未知金额为 null，不能伪造为 0；删除订阅不删除有效流水。旧人民币备份自动补齐 CNY/1，旧 v4 币种字段按上述规则升级。私人接口始终鉴权，公开看板不返回流水/锚点。
 
 preview 返回 revision、subscriptions、logs、existing、newSubscriptions、skippedSubscriptions、newLogs。import 必须提交原 revision 作为 expectedRevision，预览后任何业务变化会返回 409。mode=merge 只插入新 ID；mode=replace 还必须 confirmReplace=true，替换当前用户业务数据，不改变账号。成功返回 importedSubscriptions、importedLogs、skippedSubscriptions。导入后的版本递增，旧表单失效，导入流水不可快捷撤销。
 
 所有文件在写入前完成日期、金额、ID 唯一性、账期锚点、格式版本校验，写入过程事务化。普通请求体 20 KB；仅已鉴权的两个导入端点允许 20 MB，最多 2,000 条订阅和 10,000 条流水。
+
+## 邮件配置
+
+`settings` 为 `{ enabled, host, port, username, from, to, reminderHour, reminderMinute, password? }`。保存需要 GET 返回的 `revision`；`password` 省略或留空时保留已有授权码，更换 host、port 或 username 时必须提供新授权码。收件地址和发件地址留空时使用 username。始终启用服务器证书验证的 SSL/TLS，不接受关闭加密参数。
+
+GET/POST 返回可见设置、`passwordConfigured`、`timeZone`、`revision`、`editable`、`lockedFields`，不会返回授权码。仅主管理员可用，沿用登录、来源和 CSRF 校验；并发保存冲突拒绝覆盖。文件写入失败时保留旧文件和运行中设置。保存不触发测试发送，不重置发送去重、失败历史或测试冷却；测试邮件仍需显式调用 `/notifications/test`。

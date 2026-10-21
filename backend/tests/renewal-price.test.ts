@@ -55,7 +55,7 @@ test("改价续费撤销后恢复原币金额、币种、日期和汇率",t=>{
   assert.equal(restored.item!.amount,38);assert.equal(restored.item!.currency,"CNY");assert.equal(restored.item!.fxRateToCny,1);
   assert.equal(restored.item!.purchaseDate,"2026-01-19");assert.equal(restored.item!.ratePending,false);
   assert.equal(restored.item!.startDate,item.startDate);assert.equal(restored.item!.endDate,item.endDate);
-  assert.equal(paymentState(payments.all(1)[0]),"void");
+  assert.deepEqual(payments.all(1),[]);
 });
 
 test("连续续费各自保留实付价格，重试同一请求不新增第二笔",t=>{
@@ -113,6 +113,6 @@ test("修改付款期间如记录作废，迟到的汇率结果不能复活或�
   const slow=new PaymentService(db,new ExchangeRates(async()=>{entered();await gate;return Response.json({date:"2026-10-19",base:"USD",quote:"CNY",rate:7.1});}),{clock:()=>now});
   const pending=slow.correct(1,{id:result.renewal!.id,entry:newPrice,expected:old});
   await began;payments.void(1,{id:result.renewal!.id});release();
-  await assert.rejects(pending,{status:409});
-  const saved=payments.all(1)[0];assert.equal(paymentState(saved),"void");assert.equal(saved.payment!.currency,"CNY");
+  await assert.rejects(pending,{status:404});
+  assert.deepEqual(payments.all(1),[]);
 });

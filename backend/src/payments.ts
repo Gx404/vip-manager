@@ -10,6 +10,7 @@ import { ExchangeRates } from "./exchange-rates.ts";
 import { transaction } from "./database.ts";
 import { ApiError } from "./errors.ts";
 import { dateInTimeZone } from "../../shared/billing.ts";
+import { removeCanceledRenewal } from "./billing-facts.ts";
 
 const amount = paymentAmountSchema;
 const fields = { amount, currency: z.enum(currencyCodes), paidOn: dateSchema, startDate: dateSchema, endDate: dateSchema, note: z.string().trim().max(500) };
@@ -163,6 +164,7 @@ export class PaymentService {
       if (paymentState(log) !== "paid" || !log.payment) throw new ApiError(409,"只有已支付记录可以作废。");
       const payment = {...log.payment,voidedAt:new Date().toISOString()};
       this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,id);
+      removeCanceledRenewal(this.db,new RenewalHistory(this.db).get(owner,id));
       return {id};
     });
   }

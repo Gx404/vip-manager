@@ -2,12 +2,13 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isIP } from "node:net";
 import { assertPasswordLength } from "./password-policy.ts";
-import { emailEnvironment } from "./email-settings.ts";
+import { emailEnvironment, emailSettingNames } from "./email-settings.ts";
 
 export type Config = {
   host: string; port: number; databasePath: string; publicOrigin: string;
   cookieSecure: boolean; trustProxy: boolean; trustedProxyRanges: string[]; timeZone: string; publicDashboard: boolean;
   adminUsername: string; adminPassword?: string; sessionSeconds: number; email: EmailConfig;
+  emailSettings?: { file?: string; overrides: Record<string, string> };
 };
 
 export type EmailConfig = {
@@ -18,6 +19,8 @@ export type EmailConfig = {
 
 /** Parse server-only configuration; throws before opening a port if unsafe or invalid. */
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const emailSettings = { file: env.EMAIL_CONFIG_FILE ? resolve(env.EMAIL_CONFIG_FILE) : undefined,
+    overrides: Object.fromEntries(emailSettingNames.filter(name => env[name] !== undefined && env[name] !== "").map(name => [name, env[name]!])) };
   env = emailEnvironment(env);
   const publicOrigin = env.PUBLIC_ORIGIN ?? "http://127.0.0.1:5173";
   const url = new URL(publicOrigin);
@@ -72,6 +75,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     email: { enabled: emailEnabled, host: emailHost, port: emailPort, secure: emailSecure, username: emailUsername,
       password: emailPassword, from: emailFrom, to: emailTo, reminderHour: emailReminderHour, reminderMinute: emailReminderMinute },
     sessionSeconds: 7 * 24 * 60 * 60,
+    emailSettings,
   };
 }
 

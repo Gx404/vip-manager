@@ -32,7 +32,7 @@ test("private history and JSON API validate auth, large imports, optimistic revi
   assert.ok(renewed.renewal.id);assert.ok(renewed.undoUntil);
   assert.equal((await post("/subscriptions",{action:"undoRenew",id:item.id,version:1,logId:renewed.renewal.id})).status,200);
   const history=await (await fetch(url+`/subscriptions/history?subscriptionId=${item.id}&limit=1&offset=0`,{headers})).json() as HistoryPage;
-  assert.equal(history.total,1);assert.ok(history.logs[0].undoneAt);
+  assert.equal(history.total,0);assert.deepEqual(history.logs,[]);
   assert.equal((await fetch(url+"/subscriptions/history?limit=1000",{headers})).status,400);
   const exported=await fetch(url+"/backup",{headers});assert.match(exported.headers.get("content-disposition")!,/attachment/);
   const backup=await exported.json() as BackupDocument;
