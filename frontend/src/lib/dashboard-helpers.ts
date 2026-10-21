@@ -1,4 +1,12 @@
 import { renewDate, type Subscription } from "../../../shared/subscriptions.ts";
+import { billingProgress } from "../../../shared/presentation.ts";
+
+/** Sort by the period shown on cards, keeping final expiry as the fallback and tie-breaker. */
+export function comparePeriodExpiry(a: Subscription, b: Subscription, today: string): number {
+  const endA = billingProgress(a, today).current?.endDate ?? a.endDate;
+  const endB = billingProgress(b, today).current?.endDate ?? b.endDate;
+  return endA.localeCompare(endB) || a.endDate.localeCompare(b.endDate);
+}
 
 export type MembershipTemplate = {
   key: string;

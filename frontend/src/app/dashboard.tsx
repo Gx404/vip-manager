@@ -17,7 +17,7 @@ import { categories, cycles, dateKey, monthlyCostCny, remaining, renewDate, occu
 import { formatCurrency, money } from "../../../shared/currency.ts";
 import type { RenewalResult } from "../../../shared/renewals.ts";
 import type { RenewalPaymentInput } from "../../../shared/payments.ts";
-import { linkedEndDate, updateDraftPeriod, membershipTemplates, requestId, type MembershipTemplate } from "@/lib/dashboard-helpers";
+import { comparePeriodExpiry, linkedEndDate, updateDraftPeriod, membershipTemplates, requestId, type MembershipTemplate } from "@/lib/dashboard-helpers";
 import { HistoryDialog } from "@/components/history-dialog";
 import { RenewalDialog } from "@/components/renewal-dialog";
 import { BackupDialog } from "@/components/backup-dialog";
@@ -239,7 +239,7 @@ export default function Dashboard() {
   const filtered = useMemo(() => items.filter(i =>
     (category === "全部" || i.category === category) &&
     `${i.name} ${i.plan} ${i.note}`.toLowerCase().includes(query.toLowerCase()),
-  ).sort((a, b) => sort === "price" ? monthlyCostCny(b) - monthlyCostCny(a) : sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : a.endDate.localeCompare(b.endDate)), [items, category, query, sort, today]);
+  ).sort((a, b) => sort === "price" ? monthlyCostCny(b) - monthlyCostCny(a) : sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : comparePeriodExpiry(a, b, today)), [items, category, query, sort, today]);
 
   function edit(item: Subscription | null = null) {
     if (authRequired) { setLoginOpen(true); return; }
