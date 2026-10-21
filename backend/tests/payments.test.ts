@@ -45,7 +45,7 @@ test("confirmation enriches one original audit, is single-use and cannot be undo
   const before=service.list(1);
   await payments.confirm(1,{id:renewal.renewal!.id,entry:p});
   assert.equal(payments.all(1).length,1);assert.equal(payments.all(1)[0].payment!.rateDate,p.paidOn);
-  assert.deepEqual(service.list(1),before);
+  assert.deepEqual(service.list(1),{...before,items:before.items.map(item=>({...item,fxRateDate:p.paidOn,ratePending:false}))});
   await assert.rejects(payments.confirm(1,{id:renewal.renewal!.id,entry:p}),{status:409});
   assert.throws(()=>service.execute(1,{action:"undoRenew",id:item.id,version:1,logId:renewal.renewal!.id}),{status:409});
   assert.throws(()=>new RenewalHistory(db).deleteUndone(1,renewal.renewal!.id),{status:409});

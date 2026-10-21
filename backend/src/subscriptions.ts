@@ -10,6 +10,7 @@ import type { RenewalLog } from "../../shared/renewals.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
 import { PaymentService } from "./payments.ts";
 import { billingFacts, removeCanceledRenewal } from "./billing-facts.ts";
+import { syncPendingRenewalRates } from "./subscription-rates.ts";
 
 type Row = Record<string, unknown>;
 export function subscriptionFromRow(row: Row): Subscription {
@@ -80,6 +81,7 @@ export class SubscriptionService {
 
   /** Retry the budget's purchase-date quote without changing schedule, payments or optimistic versions. */
   async refreshPendingRates(): Promise<void> {
+    syncPendingRenewalRates(this.db);
     const today = dateInTimeZone(this.clock(),this.timeZone);
     const rows = this.db.prepare("SELECT * FROM subscriptions WHERE rate_pending=1 AND purchase_date<=? LIMIT 20").all(today);
     for (const row of rows) {

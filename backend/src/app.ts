@@ -149,14 +149,15 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   });
   app.post("/api/backup/import", (req,res) => res.json(backups.import(res.locals.user.id,req.body)));
   app.post("/api/subscriptions", async (req,res) => {
-    if (["create","update"].includes(req.body.action) && req.body.item?.purchaseDate === req.body.item?.startDate) {
+    if (["create","update"].includes(req.body.action) && req.body.item?.ratePending) {
       const draft = req.body.item;
+      const purchaseDate = draft.purchaseDate ?? draft.startDate;
       try {
-        const fx = await exchangeRates.lookup({currency:draft.currency ?? "CNY",date:draft.startDate});
+        const fx = await exchangeRates.lookup({currency:draft.currency ?? "CNY",date:purchaseDate});
         req.body.item = {...draft,fxRateToCny:fx.rate,fxRateDate:fx.rateDate,fxRateSource:fx.source,ratePending:false};
       } catch (error) {
         if (!(error instanceof ApiError)) throw error;
-        req.body.item = {...draft,fxRateToCny:1,fxRateDate:draft.startDate,fxRateSource:"manual",ratePending:true};
+        req.body.item = {...draft,fxRateToCny:1,fxRateDate:purchaseDate,fxRateSource:"manual",ratePending:true};
       }
     }
     const result = subscriptions.execute(res.locals.user.id,req.body);

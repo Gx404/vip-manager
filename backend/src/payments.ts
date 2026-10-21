@@ -11,6 +11,7 @@ import { transaction } from "./database.ts";
 import { ApiError } from "./errors.ts";
 import { dateInTimeZone } from "../../shared/billing.ts";
 import { removeCanceledRenewal } from "./billing-facts.ts";
+import { syncPendingRenewalRates, syncRenewalRate } from "./subscription-rates.ts";
 
 const amount = paymentAmountSchema;
 const fields = { amount, currency: z.enum(currencyCodes), paidOn: dateSchema, startDate: dateSchema, endDate: dateSchema, note: z.string().trim().max(500) };
@@ -114,6 +115,7 @@ export class PaymentService {
       const sub = this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? AND id=?").get(owner,current.subscriptionId);
       const payment: Payment = {...input.entry,rate:fx.rate,rateDate:fx.rateDate,category:(sub?.category ?? "其他服务") as Payment["category"],plan:String(sub?.plan ?? ""),source:"renewal",confirmedAt:new Date().toISOString(),voidedAt:null};
       this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=?,undo_until=NULL WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,input.id);
+      syncRenewalRate(this.db,owner,current,payment);
       return {log:renewalFromRow(history.get(owner,input.id))};
     });
   }
@@ -144,6 +146,7 @@ export class PaymentService {
     return work;
   }
   private async fillPendingRates(): Promise<void> {
+    syncPendingRenewalRates(this.db);
     const rows = this.db.prepare("SELECT user_id,id,payment_json,undone_at FROM subscription_renewal_logs WHERE payment_json IS NOT NULL AND undone_at IS NULL").all();
     for (const row of rows) {
       const original = String(row.payment_json), payment = JSON.parse(original) as Payment;
@@ -152,8 +155,12 @@ export class PaymentService {
       const fx = await this.lookupPaymentRate(payment);
       if (fx.rate === null) continue;
       transaction(this.db, () => {
-        this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=? AND payment_json=? AND undone_at IS NULL")
+        const saved = this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=? AND payment_json=? AND undone_at IS NULL")
           .run(JSON.stringify({...payment,...fx}),Number(row.user_id),String(row.id),original);
+        if (Number(saved.changes) === 1) {
+          const log = renewalFromRow(new RenewalHistory(this.db).get(Number(row.user_id),String(row.id)));
+          syncRenewalRate(this.db,Number(row.user_id),log,log.payment!);
+        }
       });
     }
   }
@@ -185,6 +192,7 @@ export class PaymentService {
       if (JSON.stringify(log.payment) !== original) throw new ApiError(409,"流水已变化，请刷新后重试。");
       const payment: Payment = {...log.payment,...fx,paidOn:input.paidOn,dateCorrections:[...(log.payment.dateCorrections??[]),{from:log.payment.paidOn,to:input.paidOn,changedAt:this.clock().toISOString()}]};
       this.db.prepare("UPDATE subscription_renewal_logs SET payment_json=? WHERE user_id=? AND id=?").run(JSON.stringify(payment),owner,input.id);
+      syncRenewalRate(this.db,owner,log,payment,log.payment,false);
       return {log:{...log,payment}};
     });
   }
