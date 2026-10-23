@@ -55,6 +55,7 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
   }
   upcoming.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
   const recordedYear=entries.filter(entry=>entry.paidOn.startsWith(today.slice(0,4)));
+  const active=items.filter(item=>item.endDate>=today);
   const confirmedCount=selected.filter(entry=>entry.source==="payment").length, subscriptionCount=selected.length-confirmedCount;
   return {monthTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7)))),yearTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4)))),
     monthCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7))).length,yearCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4))).length,
@@ -65,5 +66,5 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
     recordedYearTotal:bucket(today.slice(0,4)).amount,recordedYearCount:recordedYear.length,recordedYearSubscriptionCount:recordedYear.filter(entry=>entry.source==="subscription").length,
     months,years,categories:group("category"),ranking:group("subscription"),
     upcoming,forecast:upcoming.reduce((n,p)=>n+(p.cny??0),0),pending:logs.filter(log=>paymentState(log)==="pending").length,
-    monthly:items.filter(i=>i.endDate>=today).reduce((n,i)=>n+monthlyCostCny(i),0),ratePending:items.filter(i=>i.ratePending).length,paidRatePending:missing(paid)};
+    monthly:active.reduce((n,i)=>n+monthlyCostCny(i),0),ratePending:active.filter(i=>i.ratePending).length,paidRatePending:missing(paid)};
 }

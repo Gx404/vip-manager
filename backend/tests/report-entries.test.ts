@@ -15,6 +15,25 @@ function payment(item: Subscription, patch: Partial<NonNullable<RenewalLog["paym
 }
 const near=(actual:number,expected:number)=>assert.ok(Math.abs(actual-expected)<1e-8,`${actual} != ${expected}`);
 
+test("过期未续费仍保留初始账期费用，退出当前预算并保留购物分类",()=>{
+  const jd:Subscription={...base,id:"expired-jd",name:"京东",plan:"Plus",category:"购物电商",amount:98,
+    cycle:"yearly",startDate:"2025-10-23",endDate:"2026-10-23",purchaseDate:"2025-10-23"};
+  const report=paymentReport([], [jd], "2026-10-24", "2025", "accrual");
+  assert.equal(report.total,98);assert.equal(report.confirmedCount,0);assert.equal(report.subscriptionCount,1);
+  assert.equal(report.details[0].category,"购物电商");assert.equal(report.details[0].startDate,"2025-10-23");
+  assert.equal(report.monthly,0);assert.equal(report.forecast,0);assert.equal(report.upcoming.length,0);
+  assert.equal(report.years.find(row=>row.key==="2025")?.amount,98);
+});
+
+test("过期项缺少汇率不再提示当前预算待补，但已支付历史缺价仍保留提示",()=>{
+  const expired:Subscription={...base,endDate:"2024-10-20",currency:"USD",ratePending:true};
+  const paid=payment(expired,{currency:"USD",rate:null,rateDate:null});
+  const report=paymentReport([paid],[expired],"2024-11-01","2024-10");
+  assert.equal(report.ratePending,0);assert.equal(report.monthly,0);
+  assert.equal(report.paidRatePending,1);assert.equal(report.missingRates,1);
+  assert.equal(report.details[0].originalAmount,expired.amount);
+});
+
 test("all stored cycles contribute without a separate ledger, including older expired periods",()=>{
   const items: Subscription[]=[
     base,

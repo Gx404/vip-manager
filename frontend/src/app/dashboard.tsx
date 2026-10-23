@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, BriefcaseBusiness, Check, Cloud,
+  Bell, BriefcaseBusiness, Check, Cloud, Archive,
   Download, Info, LayoutGrid, Music2, Plus,
   Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, ShoppingBag, Coffee, Gamepad2, GraduationCap, Globe, History, Upload, List, BarChart3, LogOut, Palette,
 } from "lucide-react";
@@ -148,7 +148,6 @@ export default function Dashboard() {
       setPublicDashboard(payload.publicDashboard);
       setSyncError(null);
       setItems(payload.items);
-      setCategory(current => current === "全部" || payload.items.some(item => item.category === current) ? current : "全部");
     } catch (error) {
       if (sequence !== requestSequence.current) return;
       if (background && !(error instanceof ApiError && error.status === 401)) {
@@ -232,14 +231,19 @@ export default function Dashboard() {
     return () => lifecycle.abort();
   }, [authRequired, items, today]);
 
-  const visibleCategories = occupiedCategories(items);
   const active = items.filter(i => remaining(i, today) >= 0);
-  const due = items.filter(i => stateOf(i, today) !== "healthy").sort((a, b) => a.endDate.localeCompare(b.endDate));
+  const expiredCount = items.length - active.length;
+  const visibleCategories = occupiedCategories(active);
+  const due = active.filter(i => stateOf(i, today) === "soon").sort((a, b) => a.endDate.localeCompare(b.endDate));
   const monthly = active.reduce((sum, item) => sum + monthlyCostCny(item), 0);
   const filtered = useMemo(() => items.filter(i =>
-    (category === "全部" || i.category === category) &&
+    (category === "已过期" ? i.endDate < today : i.endDate >= today && (category === "全部" || i.category === category)) &&
     `${i.name} ${i.plan} ${i.note}`.toLowerCase().includes(query.toLowerCase()),
   ).sort((a, b) => sort === "price" ? monthlyCostCny(b) - monthlyCostCny(a) : sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : comparePeriodExpiry(a, b, today)), [items, category, query, sort, today]);
+
+  useEffect(() => {
+    if (category !== "全部" && category !== "已过期" && !items.some(item => item.endDate >= today && item.category === category)) setCategory("全部");
+  }, [items, category, today]);
 
   function edit(item: Subscription | null = null) {
     if (authRequired) { setLoginOpen(true); return; }
@@ -409,14 +413,24 @@ export default function Dashboard() {
       <DashboardOverview items={items} today={today} monthly={monthly} canManage={!authRequired} onCosts={() => setShowCostBreakdown(true)} />
 
       <div className="section-toolbar"><div className="section-caption"><span className="live-dot" /><span>我的订阅</span><span className="muted">{items.length} 项</span></div><div className="toolbar-actions"><label className="search"><Search size={15} /><input aria-label="搜索订阅" placeholder="搜索订阅…" value={query} onChange={e => setQuery(e.target.value)} /></label><Select value={sort} onValueChange={setSort}><SelectTrigger className="sort-control" aria-label="排序方式"><SlidersHorizontal size={15} /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expiry">到期时间</SelectItem><SelectItem value="price">月均费用从高到低</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectContent></Select><div className="view-toggle" role="group" aria-label="视图切换"><button className={viewMode === "grid" ? "active" : ""} aria-pressed={viewMode === "grid"} title="卡片视图" onClick={() => { setViewMode("grid"); try { localStorage.setItem("membership-view", "grid"); } catch { /* storage can be unavailable */ } }}><LayoutGrid size={15} /></button><button className={viewMode === "list" ? "active" : ""} aria-pressed={viewMode === "list"} title="紧凑列表视图" onClick={() => { setViewMode("list"); try { localStorage.setItem("membership-view", "list"); } catch { /* storage can be unavailable */ } }}><List size={15} /></button></div></div></div>
-      <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{items.length}</span></TabsTrigger>{visibleCategories.map(({ category: c, count }) => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{count}</span></TabsTrigger>; })}</TabsList></Tabs>
+      <Tabs value={category} onValueChange={setCategory} className="category-tabs"><TabsList className="category-list" aria-label="会员分类"><TabsTrigger value="全部"><LayoutGrid />全部<span>{active.length}</span></TabsTrigger>{visibleCategories.map(({ category: c, count }) => { const Icon = categoryIcons[c]; return <TabsTrigger key={c} value={c}><Icon />{c}<span>{count}</span></TabsTrigger>; })}<TabsTrigger value="已过期"><Archive />已过期<span>{expiredCount}</span></TabsTrigger></TabsList></Tabs>
 
       <section className={`subscription-grid ${viewMode === "list" ? "compact-view" : ""}`} aria-label="会员列表">
         {loading && <div className="loading-state"><span className="loading-pulse" />正在读取你的会员清单…</div>}
         {!loading && filtered.map(item => viewMode === "list"
           ? <SubscriptionRow key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />
           : <SubscriptionCard key={item.id} item={item} today={today} canManage={!authRequired} onEdit={() => edit(item)} />)}
-        {!loading && !syncError && filtered.length === 0 && <div className="empty-state"><LayoutGrid size={32} /><h2>{items.length ? "没有找到符合条件的订阅" : authRequired ? publicDashboard ? "还没有会员记录" : "登录查看你的会员" : "把你的第一个会员加进来"}</h2><button className="button primary" onClick={() => items.length ? (setCategory("全部"), setQuery("")) : edit()}>{items.length ? "清除筛选" : authRequired ? "管理员登录" : "添加订阅"}</button></div>}
+        {!loading && !syncError && filtered.length === 0 && <div className="empty-state">
+          <LayoutGrid size={32} />
+          <h2>{category === "已过期" && !query.trim() ? "暂无已过期订阅" : items.length && !active.length && category !== "已过期" ? "暂无有效订阅" : items.length ? "没有找到符合条件的订阅" : authRequired ? publicDashboard ? "还没有会员记录" : "登录查看你的会员" : "把你的第一个会员加进来"}</h2>
+          {category === "已过期" && !query.trim() ? <p className="muted">到期后的订阅会自动移到这里，历史费用继续保留。</p> : items.length > 0 && !active.length && category !== "已过期" && <p className="muted">订阅保留在「已过期」中，可随时查看和续费。</p>}
+          <button className="button primary" onClick={() => {
+            if (!items.length && category !== "已过期") { edit(); return; }
+            if (category === "已过期" && query.trim()) { setQuery(""); return; }
+            setCategory(!active.length && expiredCount > 0 && category !== "已过期" ? "已过期" : "全部");
+            setQuery("");
+          }}>{category === "已过期" ? query.trim() ? "清除搜索" : "查看有效订阅" : items.length ? !active.length ? "查看已过期" : "清除筛选" : authRequired ? "管理员登录" : "添加订阅"}</button>
+        </div>}
       </section>
       </>}
       <footer className="page-footer"><time dateTime={clock.toISOString()}>{footerTime}</time></footer>
@@ -431,12 +445,12 @@ export default function Dashboard() {
     </form></DialogContent></Dialog>
 
     <Dialog open={!authRequired && showReminders} onOpenChange={open => {if (!emailSettingsBusy) setShowReminders(open);}}><DialogContent className="membership-dialog" showCloseButton={!emailSettingsBusy} onEscapeKeyDown={event => {if(emailSettingsBusy) event.preventDefault();}} onPointerDownOutside={event => {if(emailSettingsBusy) event.preventDefault();}}>
-      <CompactDialogHeader title="到期提醒" helpLabel="到期提醒说明" help={<><p>按每条订阅的提前提醒设置展示，打开对应订阅后可管理或记录续费。</p><p>网页内提醒只在打开页面时显示。导出 .ics 并导入日历后，可由日历应用通知；续费后需重新导出。</p></>} />
+      <CompactDialogHeader title="到期提醒" helpLabel="到期提醒说明" help={<><p>只按未过期订阅的提前提醒设置展示。已过期订阅保留在分类栏的「已过期」中，不再催续。</p><p>网页内提醒只在打开页面时显示。导出 .ics 并导入日历后，可由日历应用通知；续费后需重新导出。</p></>} />
       {!authRequired && showReminders && <EmailReminders onBusyChange={setEmailSettingsBusy} />}
-      <div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · {money(item.amount, item.currency)}</small></span><b className={remaining(item, today) < 0 ? "red" : "amber"}>{remaining(item, today) < 0 ? `已过期 ${-remaining(item, today)} 天` : `${remaining(item, today)} 天后到期`}</b><button className="button light" disabled={emailSettingsBusy} aria-label={`管理${item.name}`} onClick={() => { setShowReminders(false); edit(item); }}>管理</button><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => void downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂无到期提醒。</p>}</div>
+      <div className="reminder-list">{due.length ? due.map(item => <div key={item.id}><span><strong>{item.name}</strong><small>{item.endDate} · {money(item.amount, item.currency)}</small></span><b className="amber">{remaining(item, today) === 0 ? "今日到期" : `${remaining(item, today)} 天后到期`}</b><button className="button light" disabled={emailSettingsBusy} aria-label={`管理${item.name}`} onClick={() => { setShowReminders(false); edit(item); }}>管理</button><button aria-label={`导出${item.name}日历`} className="icon-button" onClick={() => void downloadCalendar(item)}><Download size={16} /></button></div>) : <p className="muted">暂无到期提醒。已过期订阅可在分类栏的「已过期」中查看。</p>}</div>
     </DialogContent></Dialog>
 
-    <AlertDialog open={!authRequired && Boolean(confirmAction)} onOpenChange={open => { if (!open && !saving) setConfirmAction(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>删除这条订阅？</AlertDialogTitle><AlertDialogDescription>“{confirmAction?.item.name}”将从清单删除，已有续费流水仍保留。删除后不能在页面内撤销。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={saving} onClick={event => { event.preventDefault(); void confirmChange(); }}>{saving ? "处理中…" : "确认删除"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={!authRequired && Boolean(confirmAction)} onOpenChange={open => { if (!open && !saving) setConfirmAction(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>删除这条订阅？</AlertDialogTitle><AlertDialogDescription>“{confirmAction?.item.name}”将永久移除；已有续费流水仍保留，但仅由订阅记录计算的历史费用也会移出统计。到期不续费无需删除，保留在「已过期」即可。删除后不能在页面内撤销，建议先备份。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving}>取消</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={saving} onClick={event => { event.preventDefault(); void confirmChange(); }}>{saving ? "处理中…" : "确认删除"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <Dialog open={!authRequired && showCostBreakdown} onOpenChange={setShowCostBreakdown}>
       <DialogContent className="membership-dialog cost-dialog">
         <CompactDialogHeader title="月均支出明细" helpLabel="月均支出计算说明" help={<><p>将未过期订阅的费用摊到每月，不是本月实际扣款。已过期记录不计入，自动续费开关不影响折算。</p><p>月付：原价；季付：÷3；年付：÷12；自定义周期：金额 ÷ 天数 ×30。外币再乘该记录按付款日期保存的参考汇率。</p><p>总额按未取整金额汇总，逐项显示可能有 0.01 元舍入差异。</p></>} />
