@@ -200,8 +200,12 @@ export class SubscriptionService {
       } else if (input.action === "renew") {
         const now = this.clock();
         const today = dateInTimeZone(now, this.timeZone);
+        const paidOn = input.payment?.paidOn ?? today;
+        if (input.renewalMode === "restart" && (item.endDate > today || paidOn < item.endDate)) {
+          throw new ApiError(400,"重新开始不能覆盖已有有效期，请选择接原到期日补一期，或将付款日期设为原到期日之后。");
+        }
         const savedAnchor = String(this.db.prepare("SELECT renewal_anchor_date FROM subscriptions WHERE user_id=? AND id=?").get(owner,item.id)?.renewal_anchor_date ?? "") || billingAnchor(item);
-        const {startDate:base,endDate:end,anchor} = nextRenewalPeriod(item,today,savedAnchor);
+        const {startDate:base,endDate:end,anchor} = nextRenewalPeriod(item,today,savedAnchor,{mode:input.renewalMode,paidOn});
         dateSchema.parse(end);
         this.db.prepare("UPDATE subscriptions SET start_date=?,end_date=?,renewal_anchor_date=?,version=version+1,updated_at=? WHERE user_id=? AND id=? AND version=?")
           .run(base,end,anchor,now.getTime(),owner,item.id,item.version);
@@ -209,7 +213,7 @@ export class SubscriptionService {
         const recorded = this.history.record(owner,item,updated,savedAnchor,anchor,"manual",1,now.getTime(),input.requestId ?? null);
         // Clicking manual renewal asserts payment. Record it in this same transaction;
         // an external FX request must never block or partially commit the renewal.
-        const renewal = this.payments.recordRenewalPayment(owner,recorded.id,input.payment?.paidOn ?? today,input.payment).log;
+        const renewal = this.payments.recordRenewalPayment(owner,recorded.id,paidOn,input.payment).log;
         const payment = renewal.payment!;
         const rate = payment.currency === "CNY" ? 1 : payment.currency === item.currency ? item.fxRateToCny ?? 1 : 1;
         this.db.prepare(`UPDATE subscriptions SET original_amount_cents=?,currency=?,purchase_date=?,fx_rate_to_cny=?,

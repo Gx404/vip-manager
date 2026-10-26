@@ -35,7 +35,7 @@
 - initialize：将当前用户清单设为已初始化，不删除任何记录。
 - create：item 为完整会员记录；id 可留空由服务端生成 UUID。
 - update：id、version、完整 item。item.id 必须匹配 id。
-- renew：id、version、可选 requestId（UUID，用于重试幂等）、payment（amount、currency、paidOn、note）。付款日期不得晚于应用时区今天；返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。省略 payment 的兼容请求使用旧价格和今天作为付款日期。
+- renew：id、version、可选 requestId（UUID，用于重试幂等）、payment（amount、currency、paidOn、note）、renewalMode（continue / restart）。continue 从原到期日接续一期，补录不会跳到今天；restart 仅用于已到期订阅，从实际付款日重开一期，付款日不得早于原到期日。付款日期不得晚于应用时区今天；返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。省略 payment 的兼容请求使用旧价格和今天作为付款日期；省略 renewalMode 保留旧行为：未过期接续，过期从服务端今天重开。
 - undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；恢复 item 并删除该次续费记录。兼容响应中的 renewal 只在本次结果中提供，不再持久化为已撤销记录。
 - delete：id、version。
 

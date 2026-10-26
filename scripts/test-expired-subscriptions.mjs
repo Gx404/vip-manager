@@ -165,6 +165,7 @@ try {
   await page.getByRole("button", { name: "编辑京东", exact: true }).click();
   await dialog().getByRole("button", { name: "记录续费", exact: true }).click();
   await dialog().getByRole("heading", { name: "京东 · 记录续费", exact: true }).waitFor();
+  await dialog().getByLabel("续费方式", { exact: true }).selectOption("restart");
   assert.ok((await dialog().locator(".renewal-period").innerText()).includes(today));
   await dialog().getByRole("spinbutton", { name: "本次实付金额", exact: true }).fill("128");
   assert.equal(await dialog().getByLabel("实际付款日期", { exact: true }).inputValue(), today);

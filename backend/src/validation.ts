@@ -77,4 +77,5 @@ export const actionSchema = z.object({
   requestId: idSchema.optional(),
   logId: idSchema.optional(),
   payment: renewalPaymentSchema.optional(),
+  renewalMode: z.enum(["continue", "restart"]).optional(),
 }).strict();

@@ -1,4 +1,5 @@
 import { dateNumber, renewDate, shiftDate, type Subscription } from "./subscriptions.ts";
+import type { RenewalMode } from "./renewals.ts";
 
 type Period = Pick<Subscription, "startDate" | "endDate" | "cycle" | "customDays">;
 const monthsPerCycle = { monthly: 1, quarterly: 3, yearly: 12 } as const;
@@ -15,11 +16,17 @@ export function billingAnchor(item: Period): string {
   return renewDate(item.startDate, item.cycle, item.customDays) === item.endDate ? item.startDate : item.endDate;
 }
 
-/** Buy one more period from the saved expiry, or from today after a lapse. */
-export function nextRenewalPeriod(item: Period, today: string, savedAnchor = billingAnchor(item)) {
-  const startDate = item.endDate > today ? item.endDate : today;
-  const anchor = item.endDate >= today ? savedAnchor : startDate;
-  const endDate = item.endDate >= today ? automaticPeriod(item, anchor, startDate)!.endDate : renewDate(startDate, item.cycle, item.customDays);
+/** Explicit continuation buys exactly one anchored period; restart uses the payment date.
+ * Omitted mode retains the legacy expiry-or-today behavior for older clients. */
+export function nextRenewalPeriod(item: Period, today: string, savedAnchor = billingAnchor(item), options: { mode?: RenewalMode; paidOn?: string } = {}) {
+  if (options.mode === "restart") {
+    const startDate = options.paidOn ?? today;
+    return { startDate, endDate: renewDate(startDate, item.cycle, item.customDays), anchor: startDate };
+  }
+  const referenceDate = options.mode === "continue" ? item.endDate : today;
+  const startDate = item.endDate > referenceDate ? item.endDate : referenceDate;
+  const anchor = item.endDate >= referenceDate ? savedAnchor : startDate;
+  const endDate = item.endDate >= referenceDate ? automaticPeriod(item, anchor, startDate)!.endDate : renewDate(startDate, item.cycle, item.customDays);
   return { startDate, endDate, anchor };
 }
 
