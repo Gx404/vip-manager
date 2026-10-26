@@ -15,6 +15,8 @@ export const brands: readonly Brand[] = [
   { key: "bilibili", label: "哔哩哔哩", icon: "/brands/bilibili.svg", aliases: ["哔哩哔哩", "bilibili", "b站"] },
   { key: "xingtu", label: "醒图", icon: "/brands/xingtu.png", aliases: ["醒图", "xingtu"] },
   { key: "dmit", label: "DMIT", icon: "/brands/dmit.svg", aliases: ["dmit"] },
+  { key: "vmiss", label: "VMISS", icon: "/brands/vmiss.png", aliases: ["vmiss"] },
+  { key: "mobile-cloud-pc", label: "移动云电脑", icon: "/brands/mobile-cloud-pc.png", aliases: ["移动云电脑", "中国移动云电脑"] },
   { key: "yunyoo", label: "YUNYOO / 云悠", icon: "/brands/yunyoo.ico", aliases: ["yunyoo", "云悠"] },
   { key: "isvoro", label: "ISVORO", icon: "/brands/isvoro.svg", aliases: ["isvoro"] },
   { key: "netflix", label: "Netflix", icon: "/brands/netflix.svg", aliases: ["netflix", "奈飞", "网飞"] },

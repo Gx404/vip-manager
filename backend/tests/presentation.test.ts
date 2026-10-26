@@ -171,6 +171,8 @@ test("expanded local brands recognize common memberships and prefer more specifi
     "Trae Pro": "trae", "Manus": "manus", "阿里云 ECS": "alibaba-cloud", "腾讯云": "tencent-cloud",
     "PS Plus": "playstation", "XGPU": "xbox", "Nintendo Switch Online": "nintendo",
     "YUNYOO 云服务器": "yunyoo", "云悠": "yunyoo", "ISVORO VPS": "isvoro",
+    "VMISS": "vmiss", "vmiss TRI": "vmiss", "ＶＭＩＳＳ 洛杉矶": "vmiss",
+    "移动云电脑": "mobile-cloud-pc", "移动云电脑 32+200": "mobile-cloud-pc", "中国移动云电脑": "mobile-cloud-pc",
     "Steam": "steam", "Vultr VPS": "vultr", "Digital Ocean": "digitalocean", "Cloudflare Pro": "cloudflare",
     "GitHub Pro": "github", "GitHub Copilot Pro": "github-copilot", "Bitwarden Premium": "bitwarden",
     "1Password 家庭版": "1password", "QQ 超级会员": "qq-vip", "Slack Pro": "slack",

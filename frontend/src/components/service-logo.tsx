@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { matchBrand } from "../../../shared/brands.ts";
 
-const appIcons = new Set(["openai", "dmit", "jd", "hema", "xingtu", "taobao", "baidu-netdisk", "isvoro"]);
+const appIcons = new Set(["openai", "dmit", "vmiss", "mobile-cloud-pc", "jd", "hema", "xingtu", "taobao", "baidu-netdisk", "isvoro"]);
 
 /** Preserve native app artwork and give transparent marks their own balanced icon well. */
 export function ServiceLogo({ name, color }: { name: string; color: string }) {
