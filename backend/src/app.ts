@@ -14,6 +14,8 @@ import { PaymentService } from "./payments.ts";
 import { PASSWORD_MAX_LENGTH } from "./password-policy.ts";
 import type { EmailNotificationService } from "./notifications.ts";
 import { EmailSettingsService } from "./email-settings-service.ts";
+import { dateInTimeZone } from "../../shared/billing.ts";
+import { spendingSummary } from "../../shared/payment-reports.ts";
 
 const cookieName = "membership_session";
 function tokenFromCookie(value: string | undefined): string {
@@ -28,7 +30,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   const auth = new AuthService(db, config);
   const subscriptions = new SubscriptionService(db, config.timeZone, () => new Date(), exchangeRates);
   const history = new RenewalHistory(db);
-  const backups = new BackupService(db);
+  const backups = new BackupService(db,{timeZone:config.timeZone});
   const payments = new PaymentService(db,exchangeRates,{timeZone:config.timeZone});
   const emailSettings = new EmailSettingsService(db,config);
   const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: config.cookieSecure, path: "/" };
@@ -99,12 +101,17 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   // Public reading is an explicit deployment choice. Editing always goes through authentication below.
   app.get("/api/dashboard", (req,res) => {
     const user = auth.session(tokenFromCookie(req.get("Cookie")));
+    const today=dateInTimeZone(new Date(),config.timeZone);
     if (user) {
-      res.json({ items: subscriptions.list(user.id).items, canManage: true, publicDashboard: config.publicDashboard });
+      res.json({ items: subscriptions.list(user.id).items, canManage: true, publicDashboard: config.publicDashboard,
+        today,timeZone:config.timeZone,spending:spendingSummary(payments.all(user.id),today) });
       return;
     }
     if (!config.publicDashboard) throw new ApiError(401,"请先登录自己的管理员账号。","AUTH_REQUIRED");
-    res.json({ items: subscriptions.listPublic(), canManage: false, publicDashboard: true });
+    // Public expenditure totals were explicitly approved; receipt details remain private.
+    const owner=Number(db.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get()?.id??0);
+    res.json({ items: subscriptions.listPublic(), canManage: false, publicDashboard: true,
+      today,timeZone:config.timeZone,spending:spendingSummary(payments.all(owner),today) });
   });
   app.use("/api", (req,res,next) => {
     const user = auth.session(tokenFromCookie(req.get("Cookie")));
@@ -125,6 +132,11 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
   app.get("/api/exchange-rate", async (req,res) => res.json(await exchangeRates.lookup(req.query)));
   app.get("/api/subscriptions", (_req,res) => res.json(subscriptions.list(res.locals.user.id)));
   app.get("/api/payments", (_req,res) => res.json({logs:payments.all(res.locals.user.id),billingFacts:history.facts(res.locals.user.id)}));
+  app.get("/api/payments/reconciliation", (_req,res) => res.json(payments.reconciliation(res.locals.user.id)));
+  app.get("/api/payments/pending-periods", (req,res) => {
+    const query=z.object({id:idSchema}).strict().parse(req.query);
+    res.json(payments.pendingPeriods(res.locals.user.id,query.id));
+  });
   app.post("/api/payments/preview", async (req,res) => res.json(await payments.preview(res.locals.user.id,req.body)));
   app.post("/api/payments/backfill", async (req,res) => res.json(await payments.add(res.locals.user.id,req.body)));
   app.post("/api/payments/confirm", async (req,res) => res.json(await payments.confirm(res.locals.user.id,req.body)));
@@ -162,7 +174,7 @@ export function createApp(db: DatabaseSync, config: Config, notifications?: Pick
     }
     const result = subscriptions.execute(res.locals.user.id,req.body);
     res.status(req.body.action === "create" ? 201 : 200).json(result);
-    if (req.body.action === "renew") {
+    if (req.body.action === "renew" || (req.body.action === "create" && req.body.payment)) {
       void Promise.all([subscriptions.refreshPendingRates(),payments.refreshPendingRates()]).catch(error => {
         console.error("续费汇率暂未补齐，下次将重试：",error instanceof Error ? error.name : "UnknownError");
       });

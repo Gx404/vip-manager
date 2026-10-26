@@ -7,7 +7,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | /api/health | 健康状态，不返回配置或私人数据 |
-| GET | /api/dashboard | 首页快照：items、canManage、publicDashboard；公开模式支持匿名只读 |
+| GET | /api/dashboard | 首页快照：items、canManage、publicDashboard、today、timeZone、spending；公开模式支持匿名只读，包含获准公开的本月／年度支出聚合 |
 | POST | /api/auth/login | JSON：username、password |
 | GET | /api/auth/session | 当前用户 |
 | POST | /api/auth/logout | JSON：{}，销毁会话 |
@@ -18,6 +18,9 @@
 | GET | /api/subscriptions | 返回 items、initialized |
 | POST | /api/subscriptions | 以下 action 操作 |
 | GET | /api/payments | 当前用户有效的续费与付款记录，返回 logs，以及报表/有效期计算用 billingFacts；已撤销和作废记录不再返回 |
+| GET | /api/payments/reconciliation | 当前会员已知但尚未确认付款的账期，返回 periods；只读，不生成付款或费用 |
+| GET | /api/payments/pending-periods | 查询 id 指定的自动续期记录，返回逐期待核对的 periods；已付款或明确排除的区间不再列出 |
+| POST | /api/payments/backfill | { subscriptionId, entries }；逐笔登记明确核对后的真实付款；每项含 amount、currency、paidOn、startDate、endDate、note，重叠付款跳过 |
 | POST | /api/payments/confirm | { id, entry }；为已有单期自动顺延记录保存实付金额、币种、付款日期和固定有效期 |
 | POST | /api/payments/update | { id, entry, expected }；修改一笔已支付记录；entry / expected 为 amount、currency、paidOn、note，保留修改前信息，冲突返回 409 |
 | POST | /api/payments/void | { id }；兼容旧路径，现直接删除这笔付款并从支出中排除，订阅有效期不变 |
@@ -28,16 +31,16 @@
 | POST | /api/backup/preview | { backup }，完整校验并返回计数及 revision，不写入数据 |
 | POST | /api/backup/import | { backup, mode, expectedRevision, confirmReplace? }，事务导入 |
 
-`/api/dashboard` 登录后返回完整当前用户记录；未登录且 `PUBLIC_DASHBOARD=true` 时仅返回单管理员的展示字段，`note` 固定为空字符串、`version` 为 0、`canManage=false`，不返回其他用户记录。未开启公开展示时返回 401。所有响应不缓存。`/api/subscriptions` 的读写、`/api/auth/session` 始终需要真实登录态；公开看板不授予写入权限。
+`/api/dashboard` 登录后返回完整当前用户记录；未登录且 `PUBLIC_DASHBOARD=true` 时仅返回单管理员的展示字段和获准公开的支出聚合，`note` 固定为空字符串、`version` 为 0、`canManage=false`，不返回其他用户记录、付款明细或账期事实。`today` 是应用时区的 YYYY-MM-DD，`timeZone` 与续期、付款日期校验一致。`spending` 为 monthTotal、yearTotal、monthCount、yearCount、monthMissingRates、yearMissingRates；只根据明确有效的已付款记录和真实付款日期汇总，缺汇率的付款保留数量、不计入人民币合计。未开启公开展示时返回 401。所有响应不缓存。`/api/subscriptions` 的读写、`/api/auth/session` 始终需要真实登录态；公开看板不授予写入权限。
 
 订阅操作：
 
 - initialize：将当前用户清单设为已初始化，不删除任何记录。
-- create：item 为完整会员记录；id 可留空由服务端生成 UUID。
+- create：item 为完整会员记录，可选 payment（amount、currency、paidOn、note）明确登记首笔实付，服务有效期固定为 item 的账期，与会员同一事务写入。省略 payment 只创建会员，不推算付款。id 可留空由服务端生成 UUID；页面为一个新表单固定 UUID，完全相同的请求重试不新增第二条，已有 ID 内容不一致返回 409。
 - update：id、version、完整 item。item.id 必须匹配 id。
 - renew：id、version、可选 requestId（UUID，用于重试幂等）、payment（amount、currency、paidOn、note）、renewalMode（continue / restart）。continue 从原到期日接续一期，补录不会跳到今天；restart 仅用于已到期订阅，从实际付款日重开一期，付款日不得早于原到期日。付款日期不得晚于应用时区今天；返回 item、renewal、undoUntil；新日期由后端计算，不信任浏览器传来的续费日期。省略 payment 的兼容请求使用旧价格和今天作为付款日期；省略 renewalMode 保留旧行为：未过期接续，过期从服务端今天重开。
 - undoRenew：id、version、logId。仅在手动续费后 30 秒且当前版本仍等于该流水结果版本时允许；恢复 item 并删除该次续费记录。兼容响应中的 renewal 只在本次结果中提供，不再持久化为已撤销记录。
-- delete：id、version。
+- delete：id、version、可选 deleteMode。默认 keep-payments，删除会员及未付款续期，保留有效已付款历史；purge 同事务清理该会员的付款、账期事实和关联提醒，不影响其他会员或其他用户。
 
 会员记录字段：id、name、plan、category、amount、currency、purchaseDate、fxRateToCny、fxRateDate、fxRateSource、cycle、customDays、startDate、endDate、reminderDays、autoRenew、note、color、version。
 
@@ -47,13 +50,15 @@
 
 购买日期/汇率与本期账期分离。手动 renew 将本次实付金额、币种和付款日期保存为最新续费默认值，外币汇率异步补齐；undoRenew 恢复原来的价格、币种、日期和汇率。流水的旧价格快照用于保留前一期信息，payment 保存本次实际付款，二者不能混用。自动顺延只维护日期并按新账期开始日刷新预算汇率，不伪造已付款。
 
-修改已支付记录时，只有币种或付款日期变化才重新查询汇率；更正记录保存在 payment.corrections。有效期固定。若修改的是最新一笔续费，且卡片价格未单独修改，则同步最新默认价格；修改更早的记录不覆盖后来的价格。旧版日期更正与历史导入接口保留兼容，页面已移除补录入口。
+修改已支付记录时，只有币种或付款日期变化才重新查询汇率；更正记录保存在 payment.corrections。有效期固定。若修改的是最新一笔续费，且卡片价格未单独修改，则同步最新默认价格；修改更早的记录不覆盖后来的价格。旧版日期更正与历史导入接口保留兼容；待核对和多期自动续期通过逐笔 backfill 记录真实付款，查询候选账期本身不会写入数据。
+
+金额报表只读取 paymentState 为 paid、未撤销、未作废且付款日期不晚于应用时区今天的付款。cash / accrual 保留兼容名称，均按真实付款日归入月份和年度，不再按服务期摊销或用会员价格、审计旧价格、billingFacts 推算费用；monthly / forecast 为 0、upcoming 为空。删除付款后不会从估算补回原金额。
 
 category：影音娱乐、购物电商、AI 工具、云存储、办公效率、设计与创作、云服务与网络、游戏会员、学习教育、生活服务、其他服务。cycle：monthly、quarterly、yearly、custom。
 
 API 和 JSON 导入仍接受旧别名：购物会员 → 购物电商、云盘存储 → 云存储、效率办公 → 办公效率、网络服务 → 云服务与网络；保存和响应使用新名称，其他未知分类拒绝。007 迁移一次性重命名现有分类，并将原在影音娱乐/其他服务下、名称以醒图或 Xingtu 开头的记录移入设计与创作；原在生活服务/其他服务下、名称以盒马、Hema 或 Freshippo 开头的记录移入购物电商。仅更新受影响记录的 category、version、updated_at，保留金额、日期、汇率和流水；旧表单版本冲突返回 409。后续启动不会重新分类用户改过的记录。
 
-startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=true 时，独立后台任务在 APP_TIMEZONE 的 endDate 当天进入下一账期，启动时和每分钟检查一次；停机后直接补齐到包含当天的一期。不依赖 GET 请求，不会实际扣款或确认支付。自动更新原子地递增 version 并写入内部续期审计表；旧表单保存可能返回 409。改 startDate/endDate/cycle/customDays 会重设续费日锚点；只改备注或开关不会丢失原续费日。续费锚点、审计记录仅保存在后端，不通过公开 API 返回。
+startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=true 时，独立后台任务在 APP_TIMEZONE 的 endDate 当天进入下一账期，启动时和每分钟检查一次；停机后直接补齐到包含当天的一期。不依赖 GET 请求，不会实际扣款或确认支付。自动更新原子地递增 version 并写入内部续期审计表；旧表单保存可能返回 409。改 startDate/endDate/cycle/customDays 会重设续费日锚点；只改备注或开关不会丢失原续费日。登录后的订阅返回 renewalAnchorDate 供前端正确预览月末和闰日接续；服务端始终重新计算结果。公开 API 不返回续费锚点或审计记录。
 
 成功返回 item 或 id；错误返回 error、code。状态码：400 输入错误、401 未登录/凭据错误、403 来源或防跨站校验失败、404 记录不存在、409 版本冲突、413 请求过大、429 登录尝试或并行汇率查询过多、500 服务异常、502 历史汇率服务不可用。
 
@@ -67,9 +72,9 @@ startDate/endDate 是本期账期边界，不是最早开通时间。autoRenew=t
 
 ## JSON 格式与并发恢复
 
-格式：application 为 vip-manager、formatVersion 导出为 4（导入接受 1–4）、顶层 currency 为 CNY（报表本位币），另有 exportedAt、subscriptions、renewalLogs、billingFacts。每项保存自身原币金额及完整汇率快照；订阅增加 renewalAnchorDate；流水和账期事实字段见 [shared/renewals.ts](../shared/renewals.ts)。billingFacts 只保存有效旧账期、覆盖关系和费用排除区间，不保存已删除付款的金额、付款日期、备注或修改历史。历史未知金额为 null，不能伪造为 0；删除订阅不删除有效流水。旧人民币备份自动补齐 CNY/1，旧 v4 币种字段按上述规则升级。私人接口始终鉴权，公开看板不返回流水/锚点。
+格式：application 为 vip-manager、formatVersion 导出为 4（导入接受 1–4）、顶层 currency 为 CNY（报表本位币），另有 exportedAt、subscriptions、renewalLogs、billingFacts。每项保存自身原币金额及完整汇率快照；订阅增加 renewalAnchorDate；流水和账期事实字段见 [shared/renewals.ts](../shared/renewals.ts)。billingFacts 只保存有效旧账期、覆盖关系和费用排除区间，不保存已删除付款的金额、付款日期、备注或修改历史。历史未知金额为 null，不能伪造为 0；默认删除保留有效付款，purge 则清理该会员全部历史。旧人民币备份自动补齐 CNY/1，旧 v4 币种字段按上述规则升级。私人接口始终鉴权，公开看板不返回流水/锚点。
 
-preview 返回 revision、subscriptions、logs、existing、newSubscriptions、skippedSubscriptions、newLogs。import 必须提交原 revision 作为 expectedRevision，预览后任何业务变化会返回 409。mode=merge 只插入新 ID；mode=replace 还必须 confirmReplace=true，替换当前用户业务数据，不改变账号。成功返回 importedSubscriptions、importedLogs、skippedSubscriptions。导入后的版本递增，旧表单失效，导入流水不可快捷撤销。
+preview 返回 revision、subscriptions、logs、existing、newSubscriptions、skippedSubscriptions、newLogs 和 paymentConflicts（merge / replace 各自冲突数）。import 必须提交原 revision 作为 expectedRevision，预览后任何业务变化会返回 409。mode=merge 只插入新 ID；mode=replace 还必须 confirmReplace=true，替换当前用户业务数据，不改变账号。实际导入重新校验付款区间冲突，冲突返回 409 / IMPORT_PAYMENT_CONFLICT；未来付款日期在预览与导入均拒绝。成功返回 importedSubscriptions、importedLogs、skippedSubscriptions。导入后的版本递增，旧表单失效，导入流水不可快捷撤销。
 
 所有文件在写入前完成日期、金额、ID 唯一性、账期锚点、格式版本校验，写入过程事务化。普通请求体 20 KB；仅已鉴权的两个导入端点允许 20 MB，最多 2,000 条订阅和 10,000 条流水。
 

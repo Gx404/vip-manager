@@ -35,4 +35,5 @@ export type BackupDocument = {
 export type ImportPreview = {
   revision: string; subscriptions: number; logs: number; existing: number;
   newSubscriptions: number; skippedSubscriptions: number; newLogs: number;
+  paymentConflicts?: { merge: number; replace: number };
 };

@@ -1,5 +1,6 @@
 /** Shared subscription data and timezone-safe date-only arithmetic. */
 import { amountInCny, type CurrencySnapshot } from "./currency.ts";
+import type { SpendingSummary } from "./payment-reports.ts";
 export const categories = ["影音娱乐", "购物电商", "AI 工具", "云存储", "办公效率", "设计与创作", "云服务与网络", "游戏会员", "学习教育", "生活服务", "其他服务"] as const;
 
 /** Accept older API clients and backups without leaving obsolete category names in storage. */
@@ -11,11 +12,12 @@ export const cycles = { monthly: "月付", quarterly: "季付", yearly: "年付"
 export type Subscription = CurrencySnapshot & {
   ratePending?: boolean;
   coverageStartDate?: string;
+  renewalAnchorDate?: string;
   id: string; name: string; plan: string; category: string; amount: number;
   cycle: keyof typeof cycles; customDays: number; startDate: string; endDate: string;
   reminderDays: number; autoRenew: boolean; note: string; color: string; version: number;
 };
-export type DashboardSnapshot = { items: Subscription[]; canManage: boolean; publicDashboard: boolean };
+export type DashboardSnapshot = { items: Subscription[]; canManage: boolean; publicDashboard: boolean; today?: string; timeZone?: string; spending?: SpendingSummary };
 export const palette = ["#d74747", "#269979", "#497ccd", "#8a5fc4", "#cf8b30", "#3b424c"];
 export function dateKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;

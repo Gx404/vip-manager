@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -92,8 +92,6 @@ export class EmailSettingsService {
     try {
       mkdirSync(dirname(filename),{recursive:true,mode:0o700});
       writeFileSync(temporary,JSON.stringify(settings),{encoding:"utf8",mode:0o600,flag:"wx"});
-      try { copyFileSync(filename,filename+".previous"); chmodSync(filename+".previous",0o600); }
-      catch(error) { if((error as NodeJS.ErrnoException).code!=="ENOENT") throw error; }
       renameSync(temporary,filename);
     } catch {
       try { unlinkSync(temporary); } catch { /* Only remove this operation's private temporary file. */ }

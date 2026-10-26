@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readConfig } from "../src/config.ts";
@@ -41,7 +42,8 @@ test("网页邮件配置保存后立即生效并持久化，授权码不回传�
   assert.equal(after.reminderMinute,30);assert.ok(!JSON.stringify(after).includes(secret));
   const restarted=readConfig({EMAIL_CONFIG_FILE:file});
   assert.equal(restarted.email.password,secret);assert.equal(restarted.email.reminderMinute,30);assert.equal(restarted.email.enabled,true);
-  if(process.platform!=="win32") { assert.equal(statSync(file).mode&0o077,0);assert.equal(statSync(file+".previous").mode&0o077,0); }
+  if(process.platform!=="win32") assert.equal(statSync(file).mode&0o077,0);
+  assert.equal(existsSync(file+".previous"),false,"saving must not retain a local copy of the previous SMTP credential");
   assert.throws(()=>settings.save(1,input(before,{reminderHour:11})),{status:409,code:"VERSION_CONFLICT"});
 });
 
@@ -82,10 +84,14 @@ test("邮件设置拒绝非主管理员、非法内容、并发磁盘变化，�
   writeFileSync(f.file,JSON.stringify({...saved,EMAIL_REMINDER_MINUTE:"7"}));
   assert.throws(()=>f.settings.save(1,input(view)),{status:409,code:"VERSION_CONFLICT"});
   const runtime={...f.config.email},disk=readFileSync(f.file,"utf8");
-  mkdirSync(f.file+".previous");
-  assert.throws(()=>f.settings.save(1,input(f.settings.get(1),{reminderMinute:35})),{status:503,code:"EMAIL_SETTINGS_WRITE_FAILED"});
+  const rename=fs.renameSync;
+  try {
+    fs.renameSync=()=>{throw new Error("fixture replace failure");};syncBuiltinESMExports();
+    assert.throws(()=>f.settings.save(1,input(f.settings.get(1),{reminderMinute:35})),{status:503,code:"EMAIL_SETTINGS_WRITE_FAILED"});
+  } finally {fs.renameSync=rename;syncBuiltinESMExports();}
   assert.deepEqual(f.config.email,runtime);assert.equal(readFileSync(f.file,"utf8"),disk);
   assert.ok(!readdirSync(f.folder).some(name=>name.endsWith(".tmp")));
+  assert.equal(existsSync(f.file+".previous"),false);
 });
 
 test("已有 SMTP 发送使用旧连接快照，保存后后续发送使用新配置且不自动发送测试信",async t=>{

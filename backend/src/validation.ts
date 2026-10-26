@@ -50,6 +50,7 @@ export function migrateLegacyCurrency(value: unknown): unknown {
 export const subscriptionObject = z.object({
   ratePending: z.boolean().optional(),
   coverageStartDate: dateSchema.optional(),
+  renewalAnchorDate: dateSchema.optional(),
   id: idSchema,
   name: z.string().trim().min(1,"请填写会员名称。").max(60),
   plan: z.string().trim().max(80),
@@ -78,4 +79,5 @@ export const actionSchema = z.object({
   logId: idSchema.optional(),
   payment: renewalPaymentSchema.optional(),
   renewalMode: z.enum(["continue", "restart"]).optional(),
+  deleteMode: z.enum(["keep-payments", "purge"]).optional(),
 }).strict();

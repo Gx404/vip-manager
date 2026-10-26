@@ -45,14 +45,15 @@ test("undo refuses expiry, later edits and cross-owner access without losing new
   assert.throws(()=>service.execute(1,{action:"undoRenew",id:original.id,version:latest.item!.version,logId:latest.renewal!.id}),{code:"UNDO_UNAVAILABLE"});
 });
 
-test("automatic catch-up records period count and estimated total once; deleting membership retains history",t=>{
+test("automatic catch-up records schedule once; deleting membership drops unpaid schedule history",t=>{
   const {db,service,history}=setup();t.after(()=>db.close());
   const original=service.execute(1,{action:"create",item:item({amount:20,startDate:"2026-09-01",endDate:"2026-10-01",autoRenew:true})}).item!;
   service.advanceAutomaticRenewals(new Date("2026-12-01T00:00:00Z"));
   service.advanceAutomaticRenewals(new Date("2026-12-01T00:00:00Z"));
   const logs=history.list(1).logs;assert.equal(logs.length,1);assert.equal(logs[0].kind,"automatic");
   assert.equal(logs[0].periods,3);assert.equal(logs[0].amount,60);assert.equal(logs[0].newEndDate,"2027-01-01");
-  service.execute(1,{action:"delete",id:original.id,version:1});assert.equal(history.list(1).total,1);
+  assert.equal(logs[0].payment,null,"automatic advancement is not an actual payment");
+  service.execute(1,{action:"delete",id:original.id,version:1});assert.equal(history.list(1).total,0);
 });
 
 test("a ledger insert failure rolls back the subscription and legacy audit in the same transaction",t=>{
@@ -121,12 +122,13 @@ test("restore rejects future or off-cycle anchors before mutation and exports ir
   assert.equal(service.list(1).items[0].endDate,"2026-10-15");
 });
 
-test("deleting then recreating a UUID cannot revive an old undo receipt",t=>{
-  const {db,service}=setup();t.after(()=>db.close());
+test("kept payment history prevents reusing its UUID or reviving an old undo receipt",t=>{
+  const {db,service,history}=setup();t.after(()=>db.close());
   const original=service.execute(1,{action:"create",item:item()}).item!;
   const result=service.execute(1,{action:"renew",id:original.id,version:0});
   service.execute(1,{action:"delete",id:original.id,version:1});
-  const recreated=service.execute(1,{action:"create",item:result.item}).item!;
-  service.execute(1,{action:"update",id:recreated.id,version:0,item:recreated});
-  assert.throws(()=>service.execute(1,{action:"undoRenew",id:original.id,version:1,logId:result.renewal!.id}),{code:"UNDO_UNAVAILABLE"});
+  assert.throws(()=>service.execute(1,{action:"create",item:result.item}),{code:"CREATE_CONFLICT"});
+  assert.equal(service.list(1).items.length,0);
+  assert.equal(history.list(1).logs[0].payment?.amount,19.99,"actual payment remains after default deletion");
+  assert.throws(()=>service.execute(1,{action:"undoRenew",id:original.id,version:1,logId:result.renewal!.id}),{status:404,code:"NOT_FOUND"});
 });

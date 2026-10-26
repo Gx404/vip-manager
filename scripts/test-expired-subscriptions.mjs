@@ -15,7 +15,7 @@ import { SubscriptionService } from "../backend/src/subscriptions.ts";
 import { RenewalHistory } from "../backend/src/renewal-history.ts";
 import { PaymentService } from "../backend/src/payments.ts";
 import { dateInTimeZone } from "../shared/billing.ts";
-import { monthlyCostCny, renewDate, shiftDate } from "../shared/subscriptions.ts";
+import { renewDate, shiftDate } from "../shared/subscriptions.ts";
 import { paymentReport } from "../shared/payment-reports.ts";
 
 const playwright = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : "playwright");
@@ -91,10 +91,9 @@ try {
   await payments.refreshPendingRates();
   assert.ok(prepaid.item.startDate > today, "fixture really stores a future prepaid period");
   assert.ok(current(dmit.id).coverageStartDate < today, "prior continuous coverage is retained");
-  const expectedMonthly = [shopping, boundary, current(dmit.id)].reduce((sum, item) => sum + monthlyCostCny(item), 0);
+  const expectedMonthly = paymentReport(payments.all(1), service.list(1).items, today).monthTotal;
   const originalJdRows = report().details.filter(entry => entry.subscriptionId === jd.id);
-  assert.equal(originalJdRows.length, 1);
-  assert.equal(originalJdRows[0].allocated, 98, "expired JD still contributes its original historical fee");
+  assert.equal(originalJdRows.length, 0, "a saved expired JD price is not proof of historical payment");
 
   const api = createApp(db, config, undefined, rates), web = express();
   web.use((req, res, next) => req.path.startsWith("/api/") ? api(req, res, next) : next());
@@ -128,20 +127,19 @@ try {
   assert.equal(await dialog().getByRole("button", { name: "管理DMIT预付测试", exact: true }).count(), 0);
   assert.equal(await dialog().getByRole("button", { name: "管理本日到期测试", exact: true }).count(), 1);
   await closeDialog();
-  await page.getByRole("button", { name: "月均支出，查看摊算明细", exact: true }).click();
-  await dialog().getByRole("heading", { name: "月均支出明细", exact: true }).waitFor();
-  assert.equal(await dialog().locator(".cost-list li").filter({ hasText: "京东" }).count(), 0);
-  assert.equal(await dialog().locator(".cost-list li").count(), 3);
-  assert.equal((await dialog().locator(".cost-total strong").innerText()).replaceAll(",", ""), `¥${expectedMonthly.toFixed(2)}`);
-  await closeDialog();
+  assert.equal((await page.locator(".spending-summary .summary-number").innerText()).replaceAll(",", "").replaceAll(/\s/g, ""), `¥${expectedMonthly.toFixed(2)}`);
+  await page.getByRole("button", { name: "本月支出，查看已付款明细", exact: true }).click();
+  await page.getByRole("heading", { name: "支出分析", exact: true }).waitFor();
+  await page.locator(".report-list li").filter({ hasText: "DMIT预付测试" }).waitFor();
+  assert.equal(await page.locator(".report-list li").filter({ hasText: "京东" }).count(), 0);
+  await page.getByRole("button", { name: "返回订阅", exact: true }).click();
 
   // The report receives every stored subscription; status tabs never filter its historical inputs.
   await page.getByRole("button", { name: "支出分析", exact: true }).click();
   await page.getByRole("combobox", { name: "统计范围", exact: true }).selectOption("all");
   const jdHistory = page.locator(".report-list li").filter({ hasText: "京东" });
-  await jdHistory.waitFor();
-  assert.equal(await jdHistory.count(), 1);
-  assert.match(await jdHistory.innerText(), /¥98\.00/);
+  await page.locator(".report-list li").filter({ hasText: "DMIT预付测试" }).waitFor();
+  assert.equal(await jdHistory.count(), 0, "unknown initial payments cannot reappear in all-years reporting");
   await page.getByRole("button", { name: "返回订阅", exact: true }).click();
 
   await tab("购物电商").click(); await expectRows(["淘宝"]);
@@ -183,19 +181,19 @@ try {
   assert.match(await tab("全部").innerText(), /全部\s*4$/);
 
   const renewedJd = report().details.filter(entry => entry.subscriptionId === jd.id);
-  assert.equal(renewedJd.length, 2, "one original period plus one newly confirmed payment");
-  assert.deepEqual(renewedJd.map(entry => entry.allocated).sort((a, b) => a - b), [98, 128]);
+  assert.equal(renewedJd.length, 1, "only the newly confirmed payment is expenditure");
+  assert.deepEqual(renewedJd.map(entry => entry.allocated), [128]);
   assert.equal(payments.all(1).filter(log => log.subscriptionId === jd.id).length, 1);
   await page.getByRole("button", { name: "支出分析", exact: true }).click();
   await page.getByRole("combobox", { name: "统计范围", exact: true }).selectOption("all");
   await page.locator(".report-list li").filter({ hasText: "京东" }).first().waitFor();
-  assert.equal(await page.locator(".report-list li").filter({ hasText: "京东" }).count(), 2);
+  assert.equal(await page.locator(".report-list li").filter({ hasText: "京东" }).count(), 1);
   const amounts = await page.locator(".report-list li").filter({ hasText: "京东" }).locator(":scope > b").allTextContents();
-  assert.deepEqual(amounts.sort(), ["¥128.00", "¥98.00"].sort());
+  assert.deepEqual(amounts, ["¥128.00"]);
   assert.deepEqual(errors, []);
   const result = { passed: true, today, checks: ["expired-tab-and-active-category-counts", "expired-hidden-from-all-and-shopping", "today-inclusive-boundary", "prepaid-future-period-stays-active",
-    "expired-excluded-from-budget-and-reminders", "historical-expense-kept-in-report", "grid-list-search-empty-states", "desktop-mobile-light-dark-without-overflow",
-    "real-renewal-restores-original-category", "old-and-new-payment-not-duplicated", "no-javascript-errors"], layouts, queries, blockedOrigins: [...new Set(blocked)] };
+    "expired-excluded-from-reminders", "unconfirmed-expired-prices-not-in-spending", "paid-only-dashboard-and-report", "grid-list-search-empty-states", "desktop-mobile-light-dark-without-overflow",
+    "real-renewal-restores-original-category", "only-confirmed-payment-in-history", "no-javascript-errors"], layouts, queries, blockedOrigins: [...new Set(blocked)] };
   await writeFile(join(output, "result.json"), JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result, null, 2));
 } finally {

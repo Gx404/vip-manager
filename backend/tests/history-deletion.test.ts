@@ -17,7 +17,7 @@ const item = (changes: Partial<Subscription> = {}): Subscription => ({
   reminderDays: 7, autoRenew: false, note: "private", color: "#269979", version: 0, ...changes,
 });
 
-test("active manual and automatic history stays protected even after the subscription is deleted", t => {
+test("active history stays protected; membership deletion keeps paid receipts and removes unpaid schedules", t => {
   const db = openDatabase(":memory:"); t.after(() => db.close());
   db.exec("INSERT INTO users VALUES(1,'owner','test-hash',0)");
   const service = new SubscriptionService(db,"Asia/Shanghai");
@@ -33,8 +33,10 @@ test("active manual and automatic history stays protected even after the subscri
   assert.equal(service.list(1).items.find(record => record.id === manual.id)?.endDate,renewed.item!.endDate);
   service.execute(1,{ action:"delete", id:manual.id, version:renewed.item!.version });
   service.execute(1,{ action:"delete", id:automatic.id, version:1 });
-  for (const log of before.logs) assert.throws(() => history.deleteUndone(1,log.id),{ status:409, code:"RENEWAL_NOT_UNDONE" });
-  assert.deepEqual(history.list(1),before);
+  const paid=before.logs.find(log=>log.kind==="manual")!, pending=before.logs.find(log=>log.kind==="automatic")!;
+  assert.throws(() => history.deleteUndone(1,paid.id),{status:409,code:"RENEWAL_NOT_UNDONE"});
+  assert.throws(() => history.deleteUndone(1,pending.id),{status:404});
+  assert.equal(history.list(1).total,1);assert.deepEqual(history.list(1).logs[0].payment,paid.payment);
 });
 
 test("undo automatically removes history, preserves membership and invalidates stale backup previews", t => {

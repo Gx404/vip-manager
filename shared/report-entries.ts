@@ -7,75 +7,19 @@ type Interval = { startDate: string; endDate: string };
 export type ReportEntry = Interval & {
   id: string; subscriptionId: string; label: string; plan: string; category: string;
   paidOn: string; amount: number | null; originalAmount: number; currency: CurrencyCode; source: "payment" | "subscription";
-  // A subscription estimate can fill only the uncovered portions of a ledger period.
+  // Service coverage is retained for display; expenditure always uses the actual payment amount.
   segments: Interval[];
 };
 
-function subtract(segments: Interval[], covered: Interval): Interval[] {
-  return segments.flatMap(segment => {
-    if (covered.endDate <= segment.startDate || covered.startDate >= segment.endDate) return [segment];
-    const rest: Interval[] = [];
-    if (segment.startDate < covered.startDate) rest.push({ startDate: segment.startDate, endDate: covered.startDate });
-    if (covered.endDate < segment.endDate) rest.push({ startDate: covered.endDate, endDate: segment.endDate });
-    return rest;
-  });
-}
-
-/** Read-only reporting inputs: never create payment confirmations from subscription estimates. */
-export function reportEntries(logs: RenewalLog[], items: Subscription[], today: string, billingFacts: BillingFact[] = []) {
+/** Only explicit valid payments are expenditure. Legacy schedules/facts never create a charge. */
+export function reportEntries(logs: RenewalLog[], _items: Subscription[], today: string, _billingFacts: BillingFact[] = []) {
   const confirmed: ReportEntry[] = logs.filter(log => paymentState(log) === "paid" && log.payment!.paidOn <= today).map(log => {
     const p = log.payment!;
     return { id: log.id, subscriptionId: log.subscriptionId, label: log.subscriptionName, plan: p.plan, category: p.category,
       startDate: p.startDate, endDate: p.endDate, paidOn: p.paidOn, amount: paymentCny(p), originalAmount:p.amount, currency:p.currency, source: "payment", segments: [p] };
   });
-  const candidates: ReportEntry[] = [];
-  const unavailable = new Set<string>();
-  for (const item of items) {
-    if (item.startDate > today) continue;
-    if (item.ratePending) { unavailable.add(item.id); continue; }
-    candidates.push({ id: `subscription:${item.id}`, subscriptionId: item.id, label: item.name, plan: item.plan, category: item.category,
-      startDate: item.startDate, endDate: item.endDate, paidOn: item.startDate, amount: item.amount * (item.fxRateToCny ?? 1), originalAmount:item.amount,currency:item.currency ?? "CNY", source: "subscription", segments: [item] });
-  }
-  // Renewal audits also preserve the previous entered period and its price. Keep that
-  // known history after renewal, without extrapolating missing cycles backwards.
-  const schedules=[...logs.filter(log=>!log.undoneAt&&log.payment?.source!=="backfill").map(log=>{
-    const item=items.find(item=>item.id===log.subscriptionId);
-    return {...log,plan:log.payment?.plan??item?.plan??"",category:log.payment?.category??item?.category??"其他服务"};
-  }),...billingFacts.flatMap(fact=>fact.schedule?[{...fact.schedule,id:fact.id,subscriptionId:fact.subscriptionId}]:[])].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
-  for (const log of schedules) {
-    if (log.previousStartDate >= log.newStartDate || log.previousStartDate > today || log.amount === null || log.previousRatePending) continue;
-    candidates.push({ id: `schedule:${log.id}`, subscriptionId: log.subscriptionId, label: log.subscriptionName,
-      plan: log.plan, category: log.category,
-      startDate: log.previousStartDate, endDate: log.previousEndDate, paidOn: log.previousStartDate,
-      amount: log.amount / log.periods * (log.fxRateToCny ?? 1), originalAmount:log.amount / log.periods,currency:log.currency ?? "CNY",source: "subscription", segments: [{ startDate: log.previousStartDate, endDate: log.previousEndDate }] });
-  }
-
-  const accrual = [...confirmed], cash = [...confirmed];
-  const occupied = new Map<string, Interval[]>();
-  const cashBlocked = new Map<string, Interval[]>();
-  for (const log of logs) {
-    const interval = log.payment ?? { startDate: log.newStartDate, endDate: log.newEndDate };
-    // A voided payment must not reappear as a subscription estimate. Pending schedule
-    // events remain estimates in accrual, but must not become inferred cash payments.
-    if (log.payment) occupied.set(log.subscriptionId, [...(occupied.get(log.subscriptionId) ?? []), interval]);
-    if (!log.undoneAt || log.payment) cashBlocked.set(log.subscriptionId, [...(cashBlocked.get(log.subscriptionId) ?? []), interval]);
-  }
-  for(const fact of billingFacts)if(fact.excludedPeriod){
-    occupied.set(fact.subscriptionId,[...(occupied.get(fact.subscriptionId)??[]),fact.excludedPeriod]);
-    cashBlocked.set(fact.subscriptionId,[...(cashBlocked.get(fact.subscriptionId)??[]),fact.excludedPeriod]);
-  }
-  for (const entry of candidates) {
-    if (entry.amount === null || !Number.isFinite(entry.amount) || entry.amount < 0 || entry.endDate <= entry.startDate) continue;
-    const blockers = occupied.get(entry.subscriptionId) ?? [];
-    let segments: Interval[] = [entry];
-    for (const interval of blockers) segments = subtract(segments, interval);
-    if (segments.length) accrual.push({ ...entry, segments });
-    // Partial ledger overlap does not justify inventing an additional cash payment.
-    if (!(cashBlocked.get(entry.subscriptionId) ?? []).some(interval => interval.startDate < entry.endDate && interval.endDate > entry.startDate)) cash.push(entry);
-    occupied.set(entry.subscriptionId, [...blockers, entry]);
-    cashBlocked.set(entry.subscriptionId, [...(cashBlocked.get(entry.subscriptionId) ?? []), entry]);
-  }
-  return { accrual, cash, confirmed, unavailable: unavailable.size };
+  // Keep the old response keys for imports/tests and callers; both views now have one paid-only meaning.
+  return { accrual: [...confirmed], cash: [...confirmed], confirmed, unavailable: confirmed.filter(entry=>entry.amount===null).length };
 }
 
 export function reportWindow(period: string): Interval | null {
@@ -94,17 +38,9 @@ export function entryDays(entry: ReportEntry, period: string): number {
   }, 0);
 }
 
-/**
- * Return the amount represented by an entry after confirmed payments have
- * covered part of its service interval. The remaining amount stays attached
- * to the entry's payment month; it is never spread into later months.
- */
+/** A charge belongs in full to its actual payment month, regardless of service coverage. */
 export function entryAmount(entry: ReportEntry): number | null {
-  if (entry.amount === null) return null;
-  const duration = dateNumber(entry.endDate) - dateNumber(entry.startDate);
-  const covered = entry.segments.reduce((days, segment) =>
-    days + Math.max(0, dateNumber(segment.endDate) - dateNumber(segment.startDate)), 0);
-  return duration > 0 ? entry.amount * Math.min(1, covered / duration) : 0;
+  return entry.amount;
 }
 
 export function allocatedEntry(entry: ReportEntry, period: string): number | null {

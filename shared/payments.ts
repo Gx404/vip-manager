@@ -11,6 +11,11 @@ export type Payment = {
 export type PaymentInput = Pick<Payment, "amount" | "currency" | "paidOn" | "startDate" | "endDate" | "note">;
 export type RenewalPaymentInput = Pick<PaymentInput, "amount" | "currency" | "paidOn" | "note">;
 export type PaymentPreview = PaymentInput & { rate: number | null; rateDate: string | null; duplicate: boolean };
+/** A known period without a confirmed payment, for explicit user reconciliation only. */
+export type ReconciliationPeriod = {
+  subscriptionId: string; subscriptionName: string; plan: string;
+  startDate: string; endDate: string; amount: number; currency: CurrencyCode; paidOn: string;
+};
 export function paymentState(log: RenewalLog): "paid" | "pending" | "void" {
   return log.undoneAt || log.payment?.voidedAt ? "void" : log.payment ? "paid" : "pending";
 }

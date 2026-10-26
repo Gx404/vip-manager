@@ -44,7 +44,7 @@ test("同一期内按不同金额币种续一年，旧价格独立保留且本�
   assert.deepEqual(dates,["2026-10-19"]);
   const saved=payments.all(1)[0];assert.equal(saved.payment!.rate,7.1);assert.equal(saved.payment!.rateDate,"2026-10-19");
   const cash=reportEntries([saved],service.list(1).items,"2026-10-20").cash;
-  assert.equal(cash.length,2);assert.equal(cash.find(entry=>entry.source==="subscription")!.amount,38);
+  assert.equal(cash.length,1);assert.equal(cash.some(entry=>entry.source==="subscription"),false,"保存的旧价格不能证明已付款");
   assert.equal(cash.find(entry=>entry.source==="payment")!.amount,8.99*7.1);
 });
 

@@ -36,7 +36,7 @@ function reports(logs:RenewalLog[],items:Subscription[],facts:BillingFact[]=[]) 
     ["",today.slice(0,4),today.slice(0,7)].map(period=>paymentReport(logs,items,today,period,basis as "cash"|"accrual",facts))));
 }
 
-test("deleting a changed-price Gemini payment preserves current progress and old CNY38 without resurrecting the canceled charge",t=>{
+test("deleting a changed-price Gemini payment preserves progress without turning old CNY38 into expenditure",t=>{
   const {db,service,payments,history,backups,renew}=fixture();t.after(()=>db.close());
   const renewed=renew(),before=service.list(1),log=payments.all(1)[0];
   const legacy={...log,payment:{...log.payment!,voidedAt:now.toISOString()}};
@@ -52,7 +52,7 @@ test("deleting a changed-price Gemini payment preserves current progress and old
   for(const privateValue of ["8.99","2026-10-19","private canceled receipt","confirmedAt","voidedAt","corrections","purchaseDate"])
     assert.equal(JSON.stringify(facts).includes(privateValue),false,`deleted payment detail ${privateValue} is not retained`);
   assert.deepEqual(reports([],before.items,facts),expected);
-  assert.equal(paymentReport([],before.items,"2026-10-20","","cash",facts).total,38);
+  assert.equal(paymentReport([],before.items,"2026-10-20","","cash",facts).total,0);
   assert.equal(paymentReport([],before.items,"2027-10-20","2027","accrual",facts).total,0);
 
   const backup=backups.export(1);

@@ -6,8 +6,8 @@ import { transaction } from "./database.ts";
 import { ApiError } from "./errors.ts";
 import { subscriptionFromRow } from "./subscriptions.ts";
 import { renewalFromRow } from "./renewal-history.ts";
-import type { BackupDocument, ImportPreview } from "../../shared/renewals.ts";
-import { billingAnchor, cycleBoundary } from "../../shared/billing.ts";
+import type { BackupDocument, ImportPreview, RenewalLog } from "../../shared/renewals.ts";
+import { billingAnchor, cycleBoundary, dateInTimeZone } from "../../shared/billing.ts";
 import { paymentSchema } from "./payments.ts";
 import { billingFacts, removeAllCanceledRenewals, saveBillingFact } from "./billing-facts.ts";
 import { currencyCodes } from "../../shared/currency.ts";
@@ -64,7 +64,52 @@ export const importSchema = z.object({
 /** Private business-data backup/restore. Authentication, sessions and server settings never leave the server. */
 export class BackupService {
   private db: DatabaseSync;
-  constructor(db: DatabaseSync) { this.db = db; }
+  private timeZone: string;
+  private clock: () => Date;
+  constructor(db: DatabaseSync, options: {timeZone?: string; clock?: () => Date} = {}) {
+    this.db = db;
+    this.timeZone = options.timeZone ?? process.env.APP_TIMEZONE ?? "Asia/Shanghai";
+    this.clock = options.clock ?? (() => new Date());
+  }
+
+  /** A canceled legacy payment is only cleanup input, never a current paid expense. */
+  private paid(log: Pick<RenewalLog, "undoneAt" | "payment">): boolean {
+    return !log.undoneAt && Boolean(log.payment && !log.payment.voidedAt);
+  }
+
+  private validatePaymentDates(backup: Pick<BackupDocument,"renewalLogs">): void {
+    const today = dateInTimeZone(this.clock(), this.timeZone);
+    if (backup.renewalLogs.some(log => this.paid(log) && log.payment!.paidOn > today)) {
+      throw new ApiError(400,"导入文件包含未来的已付款日期，请先核对实际付款日期。","IMPORT_FUTURE_PAYMENT");
+    }
+  }
+
+  /** Count incoming paid records whose interval conflicts; pending schedule audits may overlap. */
+  private paymentConflicts(owner: number, backup: Pick<BackupDocument,"renewalLogs" | "billingFacts">, mode: "merge" | "replace"): number {
+    const current = mode === "merge" ? this.db.prepare("SELECT * FROM subscription_renewal_logs WHERE user_id=?").all(owner).map(renewalFromRow) : [];
+    const skipped = new Set(mode === "merge" ? [...current.map(log => log.id),...billingFacts(this.db,owner).map(fact => fact.id)] : []);
+    const excluded = new Set((backup.billingFacts ?? []).map(fact => fact.id));
+    const groups = new Map<string, Array<{start: string; end: string; incoming: boolean}>>();
+    const append = (log: RenewalLog, incoming: boolean) => {
+      if (!this.paid(log)) return;
+      const rows = groups.get(log.subscriptionId) ?? [];
+      rows.push({start:log.payment!.startDate,end:log.payment!.endDate,incoming});
+      groups.set(log.subscriptionId, rows);
+    };
+    for (const log of current) append(log,false);
+    for (const log of backup.renewalLogs) if (!skipped.has(log.id) && !excluded.has(log.id)) append(log,true);
+    let conflicts = 0;
+    for (const rows of groups.values()) {
+      rows.sort((a,b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+      let previousEnd = "";
+      for (let index=0; index<rows.length; index++) {
+        const row = rows[index];
+        if (row.incoming && (previousEnd > row.start || (rows[index+1]?.start ?? "9999-12-31") < row.end)) conflicts++;
+        if (row.end > previousEnd) previousEnd = row.end;
+      }
+    }
+    return conflicts;
+  }
 
   export(owner: number): BackupDocument {
     return {
@@ -83,22 +128,26 @@ export class BackupService {
     return createHash("sha256").update(JSON.stringify({ subscriptions, logs, facts:billingFacts(this.db,owner) })).digest("hex");
   }
 
-  preview(owner: number, value: unknown): ImportPreview {
+  preview(owner: number, value: unknown): ImportPreview & {paymentConflicts: {merge: number; replace: number}} {
     const backup = backupSchema.parse(value);
+    this.validatePaymentDates(backup);
     const currentIds = new Set(this.db.prepare("SELECT id FROM subscriptions WHERE user_id=?").all(owner).map(row => String(row.id)));
     const logIds = new Set([...this.db.prepare("SELECT id FROM subscription_renewal_logs WHERE user_id=?").all(owner).map(row => String(row.id)),...billingFacts(this.db,owner).map(fact=>fact.id)]);
     const skippedSubscriptions = backup.subscriptions.filter(item => currentIds.has(item.id)).length;
     return { revision: this.revision(owner), subscriptions: backup.subscriptions.length, logs: backup.renewalLogs.length,
       existing: currentIds.size, newSubscriptions: backup.subscriptions.length - skippedSubscriptions, skippedSubscriptions,
-      newLogs: backup.renewalLogs.filter(log => !logIds.has(log.id)&&!log.undoneAt&&!log.payment?.voidedAt).length };
+      newLogs: backup.renewalLogs.filter(log => !logIds.has(log.id)&&!log.undoneAt&&!log.payment?.voidedAt).length,
+      paymentConflicts:{merge:this.paymentConflicts(owner,backup,"merge"),replace:this.paymentConflicts(owner,backup,"replace")} };
   }
 
   /** Validate completely before mutation, then import atomically; merge never overwrites an existing ID. */
   import(owner: number, value: unknown): { importedSubscriptions: number; importedLogs: number; skippedSubscriptions: number } {
     const input = importSchema.parse(value);
+    this.validatePaymentDates(input.backup);
     if (input.mode === "replace" && input.confirmReplace !== true) throw new ApiError(400,"覆盖恢复前必须明确确认。","CONFIRM_REQUIRED");
     return transaction(this.db, () => {
       if (this.revision(owner) !== input.expectedRevision) throw new ApiError(409,"预览后数据已有变化，请重新预览导入文件。","VERSION_CONFLICT");
+      if (this.paymentConflicts(owner,input.backup,input.mode)) throw new ApiError(409,"导入文件中的已付款账期存在重叠，请先核对，避免重复统计。","IMPORT_PAYMENT_CONFLICT");
       const versions = new Map(this.db.prepare("SELECT id,version FROM subscriptions WHERE user_id=?").all(owner).map(row => [String(row.id),Number(row.version)]));
       if (input.mode === "replace") {
         this.db.prepare("DELETE FROM subscription_billing_facts WHERE user_id=?").run(owner);

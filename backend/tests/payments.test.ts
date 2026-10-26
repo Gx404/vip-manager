@@ -39,7 +39,8 @@ test("confirmation enriches one original audit, is single-use and cannot be undo
   db.prepare("UPDATE subscription_renewal_logs SET payment_json=NULL,kind='automatic',undo_until=NULL WHERE id=?").run(renewal.renewal!.id);
   const pendingReport=paymentReport(payments.all(1),[],"2024-12-01","");
   assert.equal(pendingReport.yearTotal,0);assert.equal(pendingReport.pending,1);
-  assert.equal(pendingReport.subscriptionCount,1,"the recorded previous period remains an estimate, not a confirmed payment");
+  assert.equal(pendingReport.subscriptionCount,0,"the recorded previous period is not proof of payment");
+  assert.equal(pendingReport.total,0);
   const p={...entry(renewal.item!.startDate,renewal.item!.endDate),paidOn:"2024-10-01"};
   await assert.rejects(payments.confirm(2,{id:renewal.renewal!.id,entry:p}),{status:404});
   const before=service.list(1);
@@ -118,7 +119,7 @@ test("two prepaid annual bills allocate only over each service year and remain o
   assert.ok(Math.abs(allocated-199)<1e-8,"allocations conserve the paid amount across month/year boundaries");
   const monthly={...item,endDate:"2024-10-20"};
   const yearly={...annual,id:randomUUID(),endDate:"2024-10-23"};
-  assert.equal(paymentReport([], [monthly,yearly,{...yearly,id:randomUUID(),cycle:"quarterly"}],"2024-10-10").upcoming.length,1);
+  assert.equal(paymentReport([], [monthly,yearly,{...yearly,id:randomUUID(),cycle:"quarterly"}],"2024-10-10").upcoming.length,0);
 });
 
 test("payment date corrections preserve audit, amounts, coverage and backups while moving cash month",async t=>{

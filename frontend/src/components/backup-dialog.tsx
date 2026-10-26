@@ -56,8 +56,10 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
     finally { if (alive.current) setBusy(false); }
   }
 
+  const conflicts = preview?.paymentConflicts?.[mode] ?? 0;
+
   async function importBackup() {
-    if (!backup || !preview || busy || (mode === "replace" && (!backupDownloaded || !replaceConfirmed))) return;
+    if (!backup || !preview || busy || conflicts > 0 || (mode === "replace" && (!backupDownloaded || !replaceConfirmed))) return;
     setBusy(true); setError(null);
     try {
       const result = await apiRequest<{ importedSubscriptions: number; importedLogs: number; skippedSubscriptions: number }>("/backup/import", {
@@ -77,7 +79,7 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
 
   return <Dialog open={open} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
     <DialogContent className="membership-dialog backup-dialog">
-      <CompactDialogHeader title="数据备份与恢复" helpLabel="备份与导入说明" help={<><p>JSON 包含订阅、私人备注、续费锚点和流水，不含密码、会话或服务器配置，请妥善保管。</p><p>支持最多 2,000 条订阅、10,000 条流水、20 MB。更大规模或连同账号迁移，请使用服务器 SQLite 备份。</p><p>导入不执行扣款；自动续费的到期记录在后台检查时推进，导入流水不支持快捷撤销。</p></>} />
+      <CompactDialogHeader title="数据备份与恢复" helpLabel="备份与导入说明" help={<><p>JSON 包含订阅、私人备注、续费锚点和流水，不含密码、会话或服务器配置，请妥善保管。</p><p>支持最多 2,000 条订阅、10,000 条流水、20 MB。更大规模或连同账号迁移，请联系管理员处理。</p><p>导入不执行扣款；自动续费的到期记录在后台检查时推进，导入流水不支持快捷撤销。</p></>} />
       <div className="backup-actions">
         <button className="button secondary" disabled={busy} onClick={() => void exportCurrent()}><Download size={16} />下载当前备份</button>
         <label className="backup-file"><Upload size={16} />选择 JSON
@@ -88,6 +90,7 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
       </div>
       {busy && <p className="muted" role="status">处理中，请稍候…</p>}
       {error && <div className="sync-banner" role="alert">{error}</div>}
+      {conflicts > 0 && <p className="sync-banner" role="alert">有 {conflicts} 笔付款的有效期相互重叠，请先在原数据中核对；当前模式暂不能导入。</p>}
       {preview && backup && <div className="backup-preview">
         <p>文件校验通过：{preview.subscriptions} 条订阅、{preview.logs} 条流水。</p>
         <label><input type="radio" name="restore-mode" checked={mode === "merge"} disabled={busy} onChange={() => setMode("merge")} />合并导入</label>
@@ -100,7 +103,7 @@ export function BackupDialog({ open, onOpenChange, onImported }: Props) {
       </div>}
       <div className="dialog-right-actions">
         <button className="button light" disabled={busy} onClick={() => onOpenChange(false)}>关闭</button>
-        <button className={mode === "replace" ? "button danger" : "button primary"} disabled={!preview || busy || (mode === "replace" && (!backupDownloaded || !replaceConfirmed))} onClick={() => void importBackup()}>{mode === "replace" ? "确认覆盖恢复" : "确认合并导入"}</button>
+        <button className={mode === "replace" ? "button danger" : "button primary"} disabled={!preview || busy || conflicts > 0 || (mode === "replace" && (!backupDownloaded || !replaceConfirmed))} onClick={() => void importBackup()}>{mode === "replace" ? "确认覆盖恢复" : "确认合并导入"}</button>
       </div>
     </DialogContent>
   </Dialog>;

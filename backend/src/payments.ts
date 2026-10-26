@@ -3,13 +3,13 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { categories } from "../../shared/subscriptions.ts";
 import { currencyCodes } from "../../shared/currency.ts";
-import { paymentState, type Payment, type PaymentInput, type PaymentPreview, type RenewalPaymentInput } from "../../shared/payments.ts";
+import { paymentState, type Payment, type PaymentInput, type PaymentPreview, type RenewalPaymentInput, type ReconciliationPeriod } from "../../shared/payments.ts";
 import { dateSchema, idSchema, paymentAmountSchema, renewalPaymentSchema } from "./validation.ts";
 import { RenewalHistory, renewalFromRow } from "./renewal-history.ts";
 import { ExchangeRates } from "./exchange-rates.ts";
 import { transaction } from "./database.ts";
 import { ApiError } from "./errors.ts";
-import { dateInTimeZone } from "../../shared/billing.ts";
+import { cycleBoundary, dateInTimeZone } from "../../shared/billing.ts";
 import { removeCanceledRenewal } from "./billing-facts.ts";
 import { syncPendingRenewalRates, syncRenewalRate } from "./subscription-rates.ts";
 
@@ -28,6 +28,37 @@ export const paymentSchema = z.object({ ...fields, rate: z.number().finite().pos
 const batchSchema = z.object({ subscriptionId: idSchema, entries: z.array(paymentInputSchema).min(1).max(36) }).strict();
 const pendingRefreshes = new WeakMap<DatabaseSync, Promise<void>>();
 type PaymentOptions = { timeZone?: string; clock?: () => Date };
+
+/** Recover historical boundaries only from the immutable audit, never today's edited cycle. */
+function savedPendingBoundaries(log: ReturnType<typeof renewalFromRow>, anchor: string, fallbackAnchors: string[]): string[] {
+  if(log.periods===1) return [log.newStartDate,log.newEndDate];
+  if(!Number.isInteger(log.periods)||log.periods<2||log.periods>10000) throw new ApiError(400,"待核对账期数量无效或过多，请分段整理后重试。");
+  const candidates:string[][]=[];
+  const accepts=(boundaries:string[])=>boundaries[0]===log.previousEndDate && boundaries.at(-2)===log.newStartDate && boundaries.at(-1)===log.newEndDate &&
+    boundaries.every((value,index)=>index===0||value>boundaries[index-1]);
+  const monthNumber=(value:string)=>Number(value.slice(0,4))*12+Number(value.slice(5,7))-1;
+  // Older JSON imports saved the final period's start as anchor. It lies after the
+  // first boundary, so require endpoint-validated alternatives rather than using today's cycle.
+  const anchors=anchor<=log.previousEndDate?[anchor]:[...new Set(fallbackAnchors)];
+  for(const candidateAnchor of anchors){
+    if(!dateSchema.safeParse(candidateAnchor).success || candidateAnchor>log.previousEndDate) continue;
+    for(const [cycle,months] of [["monthly",1],["quarterly",3],["yearly",12]] as const){
+      const index=(monthNumber(log.previousEndDate)-monthNumber(candidateAnchor))/months;
+      if(!Number.isInteger(index)||index<0) continue;
+      const boundaries=Array.from({length:log.periods+1},(_,n)=>cycleBoundary(candidateAnchor,cycle,1,index+n));
+      if(accepts(boundaries)) candidates.push(boundaries);
+    }
+    const days=(Date.parse(log.newEndDate)-Date.parse(log.previousEndDate))/86400000/log.periods;
+    const customIndex=(Date.parse(log.previousEndDate)-Date.parse(candidateAnchor))/86400000/days;
+    if(Number.isInteger(days)&&days>=1&&days<=3650&&Number.isInteger(customIndex)&&customIndex>=0){
+      const boundaries=Array.from({length:log.periods+1},(_,n)=>cycleBoundary(candidateAnchor,"custom",days,customIndex+n));
+      if(accepts(boundaries)) candidates.push(boundaries);
+    }
+  }
+  const distinct=[...new Map(candidates.map(boundaries=>[JSON.stringify(boundaries),boundaries])).values()];
+  if(distinct.length!==1) throw new ApiError(409,"无法可靠还原这条历史记录的逐期账期，请根据真实账单使用补录历史手动填写。","RECONCILIATION_PERIOD_AMBIGUOUS");
+  return distinct[0];
+}
 
 /** One ledger for schedule events and explicit payments. All writes are owner-scoped and atomic. */
 export class PaymentService {
@@ -49,14 +80,75 @@ export class PaymentService {
   private duplicate(owner: number, subscriptionId: string, start: string, end: string, except?: string): boolean {
     return this.all(owner).some(log => {
       if (log.subscriptionId !== subscriptionId || log.id === except || paymentState(log) === "void") return false;
-      // Multi-period automatic catch-up is an audit only; backfill each real payment separately.
-      if (!log.payment && log.periods > 1) return false;
+      // Any unconfirmed schedule is an audit only, and must not block a real receipt.
+      if (!log.payment) return false;
       const from = log.payment?.startDate ?? log.newStartDate, to = log.payment?.endDate ?? log.newEndDate;
       return from < end && to > start;
     });
   }
   private checkDate(p: { paidOn: string; startDate: string }) {
     if (p.paidOn > dateInTimeZone(this.clock(), this.timeZone)) throw new ApiError(400,"付款日期不能晚于今天。");
+  }
+  /** Called within subscription creation's transaction; no asynchronous FX request or inferred charge. */
+  recordInitialPayment(owner: number, subscriptionId: string, details: RenewalPaymentInput) {
+    const entry=renewalPaymentSchema.parse(details), sub=this.subscription(owner,subscriptionId);
+    this.checkDate({...entry,startDate:String(sub.start_date)});
+    if(this.duplicate(owner,subscriptionId,String(sub.start_date),String(sub.end_date))) throw new ApiError(409,"该账期已有付款记录，请刷新核对。","PAYMENT_CONFLICT");
+    const payment: Payment={...entry,startDate:String(sub.start_date),endDate:String(sub.end_date),
+      rate:entry.currency==="CNY"?1:null,rateDate:entry.currency==="CNY"?entry.paidOn:null,
+      category:String(sub.category),plan:String(sub.plan),source:"backfill",confirmedAt:this.clock().toISOString(),voidedAt:null};
+    const id=randomUUID();
+    this.db.prepare(`INSERT INTO subscription_renewal_logs(user_id,id,subscription_id,subscription_name,kind,previous_start_date,previous_end_date,new_start_date,new_end_date,previous_anchor_date,new_anchor_date,amount_cents,currency,purchase_date,fx_rate_to_cny,fx_rate_date,fx_rate_source,periods,created_at,payment_json,previous_rate_pending)
+      VALUES(?,?,?,?,'manual',?,?,?,?,?,?,?,?,?,?,?,'manual',1,?,?,?)`)
+      .run(owner,id,subscriptionId,String(sub.name),payment.startDate,payment.endDate,payment.startDate,payment.endDate,payment.startDate,payment.startDate,
+        Math.round(entry.amount*100),entry.currency,entry.paidOn,payment.rate??1,payment.rateDate??entry.paidOn,this.clock().getTime(),JSON.stringify(payment),Number(payment.rate===null));
+    return renewalFromRow(new RenewalHistory(this.db).get(owner,id));
+  }
+
+  private uncovered(owner: number, subscriptionId: string, startDate: string, endDate: string): boolean {
+    const history=new RenewalHistory(this.db);
+    const paid=this.all(owner).some(log=>log.subscriptionId===subscriptionId && paymentState(log)==="paid" &&
+      log.payment!.startDate<endDate && log.payment!.endDate>startDate);
+    const excluded=history.facts(owner).some(fact=>fact.subscriptionId===subscriptionId && fact.excludedPeriod &&
+      fact.excludedPeriod.startDate<endDate && fact.excludedPeriod.endDate>startDate);
+    return !paid&&!excluded;
+  }
+
+  /** Only known original intervals are suggested. Nothing is counted as paid until the user records it. */
+  reconciliation(owner: number): {periods: ReconciliationPeriod[]} {
+    const today=dateInTimeZone(this.clock(),this.timeZone), logs=this.all(owner), facts=new RenewalHistory(this.db).facts(owner);
+    const periods: ReconciliationPeriod[]=[];
+    for(const row of this.db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY name,id").all(owner)) {
+      const subscriptionId=String(row.id), candidates=[{startDate:String(row.start_date),endDate:String(row.end_date),amount:Number(row.original_amount_cents)/100,currency:String(row.currency||"CNY")}];
+      for(const log of logs.filter(log=>log.subscriptionId===subscriptionId&&!log.undoneAt&&log.payment?.source!=="backfill"&&log.previousStartDate<log.newStartDate&&log.amount!==null)) {
+        candidates.push({startDate:log.previousStartDate,endDate:log.previousEndDate,amount:log.amount!/log.periods,currency:log.currency??"CNY"});
+      }
+      for(const fact of facts.filter(fact=>fact.subscriptionId===subscriptionId&&fact.schedule)) {
+        const s=fact.schedule!;
+        if(s.amount!==null&&s.previousStartDate<s.newStartDate) candidates.push({startDate:s.previousStartDate,endDate:s.previousEndDate,amount:s.amount/s.periods,currency:s.currency});
+      }
+      candidates.sort((a,b)=>a.startDate.localeCompare(b.startDate)||a.endDate.localeCompare(b.endDate));
+      const first=candidates[0];
+      if(first.startDate>today || !Number.isFinite(first.amount) || first.amount<0 || !this.uncovered(owner,subscriptionId,first.startDate,first.endDate)) continue;
+      periods.push({subscriptionId,subscriptionName:String(row.name),plan:String(row.plan),...first,currency:first.currency as ReconciliationPeriod["currency"],paidOn:first.startDate});
+    }
+    return {periods};
+  }
+
+  /** Enumerate each real period of an automatic catch-up, excluding already-paid or removed periods. */
+  pendingPeriods(owner: number, logId: string): {periods: ReconciliationPeriod[]} {
+    idSchema.parse(logId);
+    const history=new RenewalHistory(this.db), raw=history.get(owner,logId), log=renewalFromRow(raw);
+    if(paymentState(log)!=="pending") return {periods:[]};
+    const sub=this.subscription(owner,log.subscriptionId);
+    const anchor=String(raw.new_anchor_date), today=dateInTimeZone(this.clock(),this.timeZone), periods:ReconciliationPeriod[]=[];
+    const boundaries=savedPendingBoundaries(log,anchor,[String(raw.previous_anchor_date),log.previousStartDate,log.previousEndDate,String(sub.renewal_anchor_date)]);
+    for(let i=0;i<boundaries.length-1;i++) {
+      const startDate=boundaries[i],endDate=boundaries[i+1];
+      if(startDate<=today&&this.uncovered(owner,log.subscriptionId,startDate,endDate)) periods.push({subscriptionId:log.subscriptionId,subscriptionName:log.subscriptionName,plan:String(sub.plan),startDate,endDate,
+        amount:log.amount===null?Number(sub.original_amount_cents)/100:Math.round(log.amount*100/log.periods)/100,currency:log.currency??"CNY",paidOn:startDate});
+    }
+    return {periods};
   }
   /** A provider outage does not make a real payment unpaid. Validation errors still fail. */
   private async lookupPaymentRate(entry: Pick<PaymentInput, "currency" | "paidOn">): Promise<Pick<Payment, "rate" | "rateDate">> {
@@ -146,10 +238,11 @@ export class PaymentService {
     return work;
   }
   private async fillPendingRates(): Promise<void> {
-    syncPendingRenewalRates(this.db);
+    try { syncPendingRenewalRates(this.db); } catch { console.warn("部分旧付款格式异常，继续补齐其他有效付款汇率。"); }
     const rows = this.db.prepare("SELECT user_id,id,payment_json,undone_at FROM subscription_renewal_logs WHERE payment_json IS NOT NULL AND undone_at IS NULL").all();
     for (const row of rows) {
-      const original = String(row.payment_json), payment = JSON.parse(original) as Payment;
+      try {
+      const original = String(row.payment_json), payment = paymentSchema.parse(JSON.parse(original));
       if (payment.voidedAt || payment.rate !== null || payment.rateDate !== null) continue;
       this.checkDate(payment);
       const fx = await this.lookupPaymentRate(payment);
@@ -162,6 +255,7 @@ export class PaymentService {
           syncRenewalRate(this.db,Number(row.user_id),log,log.payment!);
         }
       });
+      } catch { console.warn("一笔付款汇率暂未补齐，其他付款继续处理。"); }
     }
   }
   void(owner: number, value: unknown) {

@@ -1,25 +1,55 @@
 import type { BillingFact, RenewalLog } from "./renewals.ts";
 import { paymentCny, paymentState } from "./payments.ts";
-import { monthlyCostCny, type Subscription } from "./subscriptions.ts";
+import type { Subscription } from "./subscriptions.ts";
 import { allocatedEntry, entryAmount, reportEntries, type ReportEntry } from "./report-entries.ts";
 
 export type ReportBasis = "cash" | "accrual";
+export type SpendingSummary = {
+  monthTotal: number; yearTotal: number; monthCount: number; yearCount: number;
+  monthMissingRates: number; yearMissingRates: number;
+};
+/** Safe aggregate for the dashboard; no estimates, names, dates, or private receipt details. */
+export function spendingSummary(logs: RenewalLog[], today: string): SpendingSummary {
+  const paid=logs.filter(log=>paymentState(log)==="paid"&&log.payment!.paidOn<=today);
+  const month=paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7)));
+  const year=paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4)));
+  const sum=(rows:RenewalLog[])=>rows.reduce((n,log)=>n+(paymentCny(log.payment!)??0),0);
+  const missing=(rows:RenewalLog[])=>rows.filter(log=>paymentCny(log.payment!)===null).length;
+  return {monthTotal:sum(month),yearTotal:sum(year),monthCount:month.length,yearCount:year.length,monthMissingRates:missing(month),yearMissingRates:missing(year)};
+}
 /** Put a confirmed payment in the month it was actually paid. */
 export function allocatedPayment(log: RenewalLog, period: string): number | null {
   const p=log.payment!;
   return !period || p.paidOn.startsWith(period) ? paymentCny(p) : 0;
 }
 
-/** Known subscription periods supplement the ledger; confirmed cash remains separately identifiable. */
+/** An automatic catch-up remains actionable only while part of its new coverage is unconfirmed. */
+export function pendingRenewals(logs: RenewalLog[], today: string, billingFacts: BillingFact[] = []): RenewalLog[] {
+  return logs.filter(log => {
+    if (paymentState(log) !== "pending") return false;
+    const start = log.kind === "automatic" && log.periods > 1 ? log.previousEndDate : log.newStartDate;
+    let cursor = start;
+    const intervals = [
+      ...logs.filter(row => row.subscriptionId === log.subscriptionId && paymentState(row) === "paid" && row.payment!.paidOn <= today)
+        .map(row => row.payment!),
+      ...billingFacts.filter(fact => fact.subscriptionId === log.subscriptionId && fact.excludedPeriod).map(fact => fact.excludedPeriod!),
+    ].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate));
+    for (const interval of intervals) {
+      if (interval.startDate > cursor) break;
+      if (interval.endDate > cursor) cursor = interval.endDate;
+      if (cursor >= log.newEndDate) return false;
+    }
+    return cursor < log.newEndDate;
+  });
+}
+
+/** Paid-only reporting; legacy basis and billing-fact parameters remain API-compatible. */
 export function paymentReport(logs: RenewalLog[], items: Subscription[], today: string, period = today.slice(0,7), basis: ReportBasis = "cash", billingFacts: BillingFact[] = []) {
   const paid = logs.filter(log => paymentState(log)==="paid" && log.payment!.paidOn<=today);
   const sum = (rows: RenewalLog[]) => rows.reduce((n,log)=>n+(paymentCny(log.payment!) ?? 0),0);
   const missing = (rows: RenewalLog[]) => rows.filter(log=>paymentCny(log.payment!) === null).length;
   const sources=reportEntries(logs,items,today,billingFacts), entries=sources[basis];
-  // Both report views use one billing bucket: a known payment belongs to its
-  // paid month, while an estimate uses the saved period start as its record
-  // month. The cash view still filters out inferred entries whose period is
-  // blocked by a pending/confirmed ledger event.
+  // Actual payment dates drive every calendar bucket. Coverage and prices never create expenditure.
   const matches=(entry:ReportEntry,key:string)=>!key || entry.paidOn.startsWith(key);
   const value=(entry:ReportEntry,key:string)=>basis==="cash"?entryAmount(entry):allocatedEntry(entry,key);
   const selected=entries.filter(entry=>matches(entry,period));
@@ -45,17 +75,7 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
   const firstYear=Math.min(Number(today.slice(0,4)),...entries.map(entry=>Number(entry.paidOn.slice(0,4))));
   const years=Array.from({length:Number(today.slice(0,4))-firstYear+1},(_,n)=>bucket(String(firstYear+n)));
   const upcoming:{id:string;name:string;plan:string;date:string;amount:number;currency:Subscription["currency"];cny:number|null}[]=[];
-  for(const item of items) {
-    // Outstanding monthly renewals stay inside this calendar month. Paid bills
-    // and next month's renewals must not reappear in the expected bill total.
-    const date=item.endDate;
-    if(item.cycle!=="monthly" || item.amount<=0 || date<today || !date.startsWith(today.slice(0,7)))continue;
-    if(paid.some(log=>log.subscriptionId===item.id&&log.payment!.startDate<=date&&log.payment!.endDate>date))continue;
-    upcoming.push({id:item.id,name:item.name,plan:item.plan,date,amount:item.amount,currency:item.currency,cny:item.ratePending?null:item.amount*(item.fxRateToCny??1)});
-  }
-  upcoming.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
   const recordedYear=entries.filter(entry=>entry.paidOn.startsWith(today.slice(0,4)));
-  const active=items.filter(item=>item.endDate>=today);
   const confirmedCount=selected.filter(entry=>entry.source==="payment").length, subscriptionCount=selected.length-confirmedCount;
   return {monthTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7)))),yearTotal:sum(paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4)))),
     monthCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,7))).length,yearCount:paid.filter(log=>log.payment!.paidOn.startsWith(today.slice(0,4))).length,
@@ -65,6 +85,6 @@ export function paymentReport(logs: RenewalLog[], items: Subscription[], today: 
     recordedMonthMissingRates:bucket(today.slice(0,7)).missingRates,recordedYearMissingRates:bucket(today.slice(0,4)).missingRates,
     recordedYearTotal:bucket(today.slice(0,4)).amount,recordedYearCount:recordedYear.length,recordedYearSubscriptionCount:recordedYear.filter(entry=>entry.source==="subscription").length,
     months,years,categories:group("category"),ranking:group("subscription"),
-    upcoming,forecast:upcoming.reduce((n,p)=>n+(p.cny??0),0),pending:logs.filter(log=>paymentState(log)==="pending").length,
-    monthly:active.reduce((n,i)=>n+monthlyCostCny(i),0),ratePending:active.filter(i=>i.ratePending).length,paidRatePending:missing(paid)};
+    upcoming,forecast:0,pending:pendingRenewals(logs,today,billingFacts).length,
+    monthly:0,ratePending:0,paidRatePending:missing(paid)};
 }
