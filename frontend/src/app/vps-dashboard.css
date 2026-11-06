@@ -28,18 +28,19 @@
 }
 :root[data-appearance="dark"] {
   color-scheme: dark;
-  --background: #212830;
-  --foreground: #e5e7eb;
-  --surface: #262c36;
-  --surface-sunken: #212830;
-  --secondary: #303743;
+  /* Neutral surfaces follow the Komari SAO dark theme. */
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --surface: #1c1c1f;
+  --surface-sunken: #121214;
+  --secondary: #27272a;
   --secondary-foreground: #d1d5db;
-  --muted: #303743;
-  --muted-foreground: #9da5b2;
-  --text-secondary: #bbc1ca;
-  --border: #3d444d;
-  --border-strong: #56606c;
-  --input: #4a535f;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --text-secondary: #a1a1aa;
+  --border: #ffffff14;
+  --border-strong: #ffffff29;
+  --input: #52525b;
   --primary: #60a5fa;
   --primary-foreground: #18212c;
   --accent: #2d3e54;
@@ -51,7 +52,7 @@
   --success-bg: #293c34;
   --warning-bg: #40382a;
   --danger-bg: #413039;
-  --progress-track: #353d49;
+  --progress-track: #27272a;
 }
 :root {
   --card: var(--surface);

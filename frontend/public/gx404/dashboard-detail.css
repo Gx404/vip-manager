@@ -1,0 +1,55 @@
+/* Quiet metric accents echo the probe while keeping the existing theme palette. */
+.dashboard .overview .summary-card {
+  --tile-accent: #167a55;
+  --tile-wash: #e7f6ed;
+  --tile-border: #cee9d8;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tile-wash) 48%, var(--surface)), var(--surface) 70%);
+  border-color: color-mix(in srgb, var(--tile-border) 65%, var(--border));
+}
+.dashboard .overview .attention-summary { --tile-accent: #167a55; --tile-wash: #e7f6ed; --tile-border: #cee9d8; }
+.dashboard .overview .attention-summary.has-attention { --tile-accent: #a16207; --tile-wash: #fff6df; --tile-border: #f0d9a4; }
+.dashboard .overview .spending-summary { --tile-accent: #2563b9; --tile-wash: #eaf3ff; --tile-border: #d2e3fa; }
+.dashboard .overview .annual-summary { --tile-accent: #7651aa; --tile-wash: #f3eeff; --tile-border: #e2d9f6; }
+.dashboard .overview .summary-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dashboard .overview .summary-label svg {
+  display: block; flex: 0 0 30px; box-sizing: border-box;
+  width: 30px; height: 30px; padding: 7px; border-radius: 9px;
+  color: var(--tile-accent); background: var(--tile-wash);
+  border: 1px solid var(--tile-border);
+}
+.dashboard .overview .spending-summary.clickable:hover {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tile-wash) 72%, var(--surface)), var(--surface) 75%);
+  border-color: var(--tile-border);
+}
+.dashboard .overview .summary-number { font-variant-numeric: tabular-nums; }
+.dashboard .subscription-card { background: var(--surface); box-shadow: 0 2px 9px #11182708; }
+.dashboard .subscription-card:hover { border-color: var(--border-strong); box-shadow: 0 7px 24px #1118270d; }
+.dashboard .subscription-card .membership-metric:first-child .small-label svg { color: #27846c; }
+.dashboard .subscription-card .membership-metric:nth-child(2) .small-label svg { color: #647bc6; }
+.dashboard .subscription-card .membership-expiry svg { color: #858da1; }
+.dashboard .subscription-card.soon { border-color: color-mix(in srgb, var(--warning) 48%, var(--border)); }
+.dashboard .subscription-card.expired { border-color: color-mix(in srgb, var(--danger) 48%, var(--border)); }
+.dashboard .category-list [data-slot="tabs-trigger"][data-state="active"] {
+  background: var(--accent) !important; color: var(--accent-foreground) !important;
+}
+:root[data-appearance="dark"] .dashboard .overview .summary-card {
+  --tile-accent: #6dd3a3;
+  --tile-wash: #11271d;
+  --tile-border: #23563b;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tile-wash) 55%, var(--surface)), var(--surface) 70%);
+  border-color: color-mix(in srgb, var(--tile-border) 55%, var(--border));
+}
+:root[data-appearance="dark"] .dashboard .overview .attention-summary { --tile-accent: #6dd3a3; --tile-wash: #11271d; --tile-border: #23563b; }
+:root[data-appearance="dark"] .dashboard .overview .attention-summary.has-attention { --tile-accent: #f3c565; --tile-wash: #302510; --tile-border: #6d5423; }
+:root[data-appearance="dark"] .dashboard .overview .spending-summary { --tile-accent: #78b4ff; --tile-wash: #14243b; --tile-border: #284a73; }
+:root[data-appearance="dark"] .dashboard .overview .annual-summary { --tile-accent: #c2a0f5; --tile-wash: #251b36; --tile-border: #51416f; }
+:root[data-appearance="dark"] .dashboard .subscription-card { box-shadow: none; }
+:root[data-appearance="dark"] .dashboard .subscription-card .membership-metric:first-child .small-label svg { color: #79cbb0; }
+:root[data-appearance="dark"] .dashboard .subscription-card .membership-metric:nth-child(2) .small-label svg { color: #a2b5f8; }
+:root[data-appearance="dark"] .dashboard .subscription-card .membership-expiry svg { color: #a1a1aa; }
+@media (max-width: 640px) {
+  .dashboard .overview .summary-label svg { flex-basis: 27px; width: 27px; height: 27px; padding: 6px; border-radius: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard .subscription-card { transition: none; }
+}
